@@ -1,16 +1,18 @@
 // src/lib.rs
 
-pub struct PriceComparison {
-    pub price_per_unit: f64,
-    pub price_per_kg: f64,
-    pub avg_weight_grams: f64, // e.g. 100g per kiwi
-}
+use wasm_bindgen::prelude::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CheaperOption {
     PerUnit,
     PerKg,
     Equal,
+}
+
+pub struct PriceComparison {
+    pub price_per_unit: f64,
+    pub price_per_kg: f64,
+    pub avg_weight_grams: f64,
 }
 
 pub struct ComparisonResult {
@@ -30,17 +32,14 @@ impl PriceComparison {
     }
 
     pub fn compare(&self) -> ComparisonResult {
-        // Convert avg weight in grams to kg
         let weight_in_kg = self.avg_weight_grams / 1000.0;
 
-        // Calculate equivalent price per kg if bought by unit
         let equivalent_price_per_kg = if weight_in_kg > 0.0 {
             self.price_per_unit / weight_in_kg
         } else {
             0.0
         };
 
-        // Calculate equivalent price per unit if bought by kg
         let equivalent_price_per_unit = self.price_per_kg * weight_in_kg;
 
         let (cheaper, savings_percentage) = if (self.price_per_kg - equivalent_price_per_kg).abs() < 1e-5 {
@@ -64,13 +63,18 @@ impl PriceComparison {
     }
 }
 
+#[wasm_bindgen(start)]
+pub fn run() {
+    console_error_panic_hook::set_once();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_price_comparison() {
-        let comp = PriceComparison::new(0.5, 5.0, 100.0);
+        let comp = PriceComparison::new(0.5, 4.0, 100.0);
         let res = comp.compare();
         assert_eq!(res.cheaper, CheaperOption::Equal);
     }

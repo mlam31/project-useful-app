@@ -1,6 +1,6 @@
-# Price Compare
+# Product Tracker
 
-Compare fruit & vegetable prices across stores — normalize everything to a
+Track and compare product prices across stores — normalize everything to a
 **price per kg** (or per unit) and instantly see which store is the best deal.
 Multi-currency: record prices in any currency while travelling, compare in
 your favorite one.

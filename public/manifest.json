@@ -1,7 +1,7 @@
 {
-    "name": "Price Compare",
-    "short_name": "Compare",
-    "description": "Compare fruit & vegetable prices across stores, per kg and per unit.",
+    "name": "Product Tracker",
+    "short_name": "Tracker",
+    "description": "Track and compare product prices across stores, per kg and per unit.",
     "id": "./",
     "start_url": "./",
     "scope": "./",

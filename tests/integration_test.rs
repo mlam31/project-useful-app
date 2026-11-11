@@ -11,8 +11,17 @@ fn entry(id: u64, store: u64, price: &str, qty: &str, weight: &str, unit: &str) 
         quantity: qty.into(),
         unit_weight: weight.into(),
         weight_unit: unit.into(),
+        currency: "EUR".into(),
         promo: false,
         date: "2026-11-11".into(),
+    }
+}
+
+/// A second product — used for the multi-product comparison test.
+fn entry2(id: u64, store: u64, product: u64, price: &str, qty: &str) -> PriceEntry {
+    PriceEntry {
+        product_id: product,
+        ..entry(id, store, price, qty, "", "")
     }
 }
 
@@ -62,6 +71,17 @@ fn latest_per_store_keeps_newest() {
     assert_eq!(out.len(), 2);
     assert!(out.iter().any(|e| e.id == 2));
     assert!(out.iter().any(|e| e.id == 3));
+}
+
+/// Ticking two similar products (green + yellow kiwi) must keep entries of
+/// BOTH products — they are different (store, product) pairs.
+#[test]
+fn latest_per_store_spans_selected_products() {
+    let green = entry(1, 10, "9.00", "1", "1", "kg"); // green kiwi, store 10
+    let yellow = entry2(2, 10, 2, "10.00", "5"); // yellow kiwi, same store
+    let out = latest_per_store(&[green, yellow]);
+    assert_eq!(out.len(), 2);
+    assert!(out.iter().any(|e| e.product_id == 2));
 }
 
 #[test]

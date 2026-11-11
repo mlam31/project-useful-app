@@ -232,6 +232,70 @@
             cursor: pointer;
         }
         .chip:active { border-color: #fff; color: #fff; }
+        .chip.active { background: #fff; color: #000; border-color: #fff; }
+
+        /* ---------- collapsible sections ---------- */
+        .collapse-btn {
+            width: 100%;
+            background: transparent;
+            border: 1px dashed #333;
+            color: #ccc;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+        .collapse-btn:active { background: #141414; }
+        .form-head { justify-content: space-between; margin-bottom: 8px; }
+        .form-title { font-size: 14px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.6px; }
+
+        /* ---------- filter chips row ---------- */
+        .filter-row { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+
+        /* ---------- product selection checkbox ---------- */
+        .row-check {
+            flex-shrink: 0;
+            width: 26px;
+            height: 26px;
+            border: 1.5px solid #555;
+            border-radius: 8px;
+            background: transparent;
+            color: #000;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+        .row-check.checked { background: #fff; border-color: #fff; }
+
+        .add-btn.compare { margin-top: 10px; }
+
+        /* ---------- settings ---------- */
+        .cur-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }
+        .cur-info { flex: 1; min-width: 0; }
+        .rate-input {
+            width: 96px;
+            flex-shrink: 0;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            padding: 8px;
+        }
+        .main-select { margin-bottom: 6px; }
+        .settings-note { font-size: 12px; color: #777; margin: 2px 0 10px; }
+        .hint.error { border-style: solid; border-color: #777; color: #ddd; }
 
         .grid2 {
             display: grid;
@@ -300,6 +364,7 @@
         .rank-unit { font-size: 12px; color: #999; font-variant-numeric: tabular-nums; }
         .rank-delta { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
         .rank-delta.winner { color: #fff; font-weight: 700; }
+        .rank-orig { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
 
         /* ---------- offer cards ---------- */
         .card {

@@ -1,7 +1,9 @@
 # Price Compare
 
 Compare fruit & vegetable prices across stores — normalize everything to a
-**price per kg** and instantly see which store is the best deal.
+**price per kg** (or per unit) and instantly see which store is the best deal.
+Multi-currency: record prices in any currency while travelling, compare in
+your favorite one.
 
 Built in **Rust** (Leptos + WebAssembly) as a **PWA**: open it in Safari on your
 iPhone and "Add to Home Screen" for a fullscreen, app-like experience. Pure
@@ -9,24 +11,46 @@ black & white UI designed for OLED screens.
 
 ## What it does
 
-The app is a small **database**: Stores → Products → Prices.
+The app is a small **database**: Stores → Products → Prices, shown in three
+bottom tabs (🏪 Stores / 🔍 Products / ⚙️ Settings).
 
 - **🏪 Stores tab** — every store you add (with optional address, pinnable via
   📍 GPS). Open a store to see all products recorded there, filter them, and
-  **add prices**: product name (autocomplete searches your existing database),
-  category (fruit / vegetable / bottle / other), **total price**,
-  **quantity** (6-pack = 6), weight of one unit (g/kg/oz/lb, optional),
-  **date** you found it and a **promo** flag — prices are temporary.
+  **add prices**. The *"＋ Add a price"* form stays collapsed to a small bar
+  until you tap it — same for *"＋ Add a store"*, which asks for the name after
+  you tap. The price form supports: product name (autocomplete searches your
+  existing database + **auto-guesses the category** from the name, emoji shown
+  per category 🍎🥬🧴📦), category override, **total price**, **quantity**
+  (5-for-10 = 5), weight of one unit (g/kg/oz/lb, optional — needed to compare
+  per-kg offers against per-unit ones), **currency**, date and a **promo** flag
+  — prices are temporary.
 - **🔍 Products tab** — searchable list of every product in your database,
-  each showing its current best price. Open a product to compare it across
-  all stores: everything is normalized to a **price per kg** (derived from
+  filterable by **category chips** (All 🍎 🥬 🧴 📦), each showing its current
+  best price. **Tick the checkboxes** to select similar-but-different products
+  (green kiwi + yellow kiwi) and tap **"⚖️ Compare selected"** to rank offers
+  across all of them. Open a product to compare it across all stores:
+  everything is normalized to a **price per kg** (derived from
   `price ÷ quantity × unit weight`) or per unit, cheapest first, winner
-  highlighted, savings per kg shown. Only the most recent price per store
-  competes, so old records don't distort the comparison.
+  highlighted, savings shown, store names link to Apple Maps. Only the most
+  recent price per (store, product) competes, so old records don't distort
+  the comparison.
+- **⚙️ Settings tab** — pick your **main currency** (favorite: EUR, USD, AUD,
+  JPY, RMB…). All comparisons are shown in it. Prices are recorded in whatever
+  currency you were paying with — old prices keep their original currency and
+  are **converted automatically** (original values shown in small print when
+  they differ). Exchange rates can be edited manually, refreshed live
+  (free ECB API, Frankfurter) with one tap, and you can **add any new
+  currency** (code + symbol + rate).
 
 All data is stored locally on your device (localStorage). Nothing is sent
-anywhere, except the optional 📍 address lookup, which uses OpenStreetMap's
-Nominatim reverse geocoding (© OpenStreetMap contributors).
+anywhere, except live-rate fetches, the optional 📍 address lookup
+(OpenStreetMap Nominatim, © OpenStreetMap contributors) and the maps links.
+
+> Note on 📍: Safari only provides GPS on **HTTPS** pages, so pinning the
+> address works once deployed over HTTPS (or on localhost), not over plain
+> HTTP on the LAN. Exact place-picking like Google Maps "QV Market" would
+> require a paid Google Places API key — the free geocoder returns an address
+> from your coordinates instead.
 
 ## Run it locally
 
@@ -93,10 +117,13 @@ fallback.
 
 ```
 src/
-  domain.rs   — pure logic: Store / Product / PriceEntry, normalization,
-                latest-per-store rule, ranking (unit-tested)
-  storage.rs  — localStorage persistence (stores, products, entries)
-  main.rs     — Leptos UI: Stores / Store / Products / Product views + tab bar
+  domain.rs   — pure logic: Store / Product / PriceEntry / Currency / Settings,
+                normalization, latest-per-store rule, category guessing,
+                default currencies (unit-tested)
+  storage.rs  — localStorage persistence (stores, products, entries,
+                currencies, settings)
+  main.rs     — Leptos UI: tab bar, Stores / Store / Products / Product /
+                Compare / Settings views, ranking & comparison list
   lib.rs      — exposes domain for integration tests
 public/       — PWA manifest, service worker, app icons
 index.html    — shell + all styling (black & white, OLED)

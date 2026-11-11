@@ -35,6 +35,8 @@ pub struct PriceEntry {
     pub unit_weight: String,
     /// Unit for `unit_weight`: "g", "kg", "oz" or "lb".
     pub weight_unit: String,
+    /// Currency code the price was recorded in (e.g. "AUD").
+    pub currency: String,
     /// Prices are temporary — promo flag records it was a promotion.
     pub promo: bool,
     /// Date the price was found, YYYY-MM-DD.
@@ -51,9 +53,89 @@ impl PriceEntry {
             quantity: "1".to_string(),
             unit_weight: String::new(),
             weight_unit: "g".to_string(),
+            currency: String::new(),
             promo: false,
             date: String::new(),
         }
+    }
+}
+
+/// A currency you track, with its exchange rate relative to your MAIN
+/// currency: `rate` = how many main-currency units 1 of this currency is worth.
+/// Editable manually; can also be refreshed live.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Currency {
+    pub code: String,
+    pub symbol: String,
+    pub rate: f64,
+}
+
+/// App settings: which currency everything is compared in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Settings {
+    pub main_currency: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            main_currency: "EUR".to_string(),
+        }
+    }
+}
+
+/// Starter currency list. Rates are rough EUR-based placeholders —
+/// edit them in Settings or fetch live rates.
+pub fn default_currencies() -> Vec<Currency> {
+    vec![
+        Currency { code: "EUR".into(), symbol: "€".into(), rate: 1.0 },
+        Currency { code: "USD".into(), symbol: "$".into(), rate: 0.92 },
+        Currency { code: "AUD".into(), symbol: "A$".into(), rate: 0.60 },
+        Currency { code: "JPY".into(), symbol: "¥".into(), rate: 0.0059 },
+        Currency { code: "CNY".into(), symbol: "¥".into(), rate: 0.13 },
+        Currency { code: "GBP".into(), symbol: "£".into(), rate: 1.17 },
+    ]
+}
+
+/// Fallback symbol for a known currency code.
+pub fn currency_symbol(code: &str) -> &'static str {
+    match code {
+        "EUR" => "€",
+        "USD" | "AUD" | "NZD" | "CAD" | "SGD" => "$",
+        "GBP" => "£",
+        "JPY" | "CNY" => "¥",
+        "CHF" => "Fr",
+        _ => "¤",
+    }
+}
+
+/// Guess a product category from its name (used when creating a product).
+pub fn guess_category(name: &str) -> &'static str {
+    let n = name.to_lowercase();
+    const FRUIT: &[&str] = &[
+        "apple", "banana", "orange", "kiwi", "grape", "pear", "mango", "berry", "strawberr",
+        "raspberry", "blueberr", "peach", "nectarine", "plum", "melon", "watermelon", "lemon",
+        "lime", "pineapple", "cherry", "fig", "apricot", "papaya", "passion", "coconut",
+    ];
+    const VEG: &[&str] = &[
+        "cucumber", "tomato", "potato", "onion", "carrot", "lettuce", "salad", "spinach",
+        "broccoli", "cauliflower", "capsicum", "pepper", "chili", "zucchini", "courgette",
+        "eggplant", "aubergine", "mushroom", "garlic", "celery", "cabbage", "pumpkin",
+        "squash", "corn", "beet", "radish", "asparagus", "leek", "fennel", "ginger", "herb",
+        "basil", "mint", "coriander", "parsley",
+    ];
+    const BOTTLE: &[&str] = &[
+        "bottle", "water", "soda", "cola", "juice", "milk", "beer", "wine", "drink", "tea",
+        "coffee", "sparkling",
+    ];
+    if BOTTLE.iter().any(|k| n.contains(k)) {
+        "bottle"
+    } else if FRUIT.iter().any(|k| n.contains(k)) {
+        "fruit"
+    } else if VEG.iter().any(|k| n.contains(k)) {
+        "vegetable"
+    } else {
+        "other"
     }
 }
 
@@ -170,18 +252,20 @@ pub fn best_metric(values: &[Option<f64>]) -> Best {
     }
 }
 
-/// Keep only the most recent entry per store (by date, then id).
+/// Keep only the most recent entry per (store, product) — by date, then id.
 /// When comparing a product across stores, an older price in the same
 /// store should not compete with the current one.
 pub fn latest_per_store(entries: &[PriceEntry]) -> Vec<PriceEntry> {
-    let mut latest: std::collections::HashMap<u64, &PriceEntry> = std::collections::HashMap::new();
+    let mut latest: std::collections::HashMap<(u64, u64), &PriceEntry> =
+        std::collections::HashMap::new();
     for e in entries {
-        let replace = match latest.get(&e.store_id) {
+        let key = (e.store_id, e.product_id);
+        let replace = match latest.get(&key) {
             Some(cur) => (cur.date.as_str(), cur.id) < (e.date.as_str(), e.id),
             None => true,
         };
         if replace {
-            latest.insert(e.store_id, e);
+            latest.insert(key, e);
         }
     }
     let mut out: Vec<PriceEntry> = latest.into_values().cloned().collect();
@@ -202,6 +286,7 @@ mod tests {
             quantity: qty.into(),
             unit_weight: weight.into(),
             weight_unit: unit.into(),
+            currency: "EUR".into(),
             promo: false,
             date: "2026-11-11".into(),
         }
@@ -282,5 +367,22 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert!(out.iter().any(|e| e.id == 2)); // newer price in store 10
         assert!(out.iter().any(|e| e.id == 3));
+    }
+
+    #[test]
+    fn latest_per_store_is_per_product() {
+        let a = entry(1, 10, "2.99", "1", "", ""); // product 1
+        let mut b = entry(2, 10, "3.50", "1", "", ""); // product 2, same store
+        b.product_id = 2;
+        let out = latest_per_store(&[a, b]);
+        assert_eq!(out.len(), 2); // both kept — different products
+    }
+
+    #[test]
+    fn categories_are_guessed_from_names() {
+        assert_eq!(guess_category("Cucumber"), "vegetable");
+        assert_eq!(guess_category("yellow kiwi"), "fruit");
+        assert_eq!(guess_category("Bottle of water"), "bottle");
+        assert_eq!(guess_category("Something weird"), "other");
     }
 }

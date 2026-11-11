@@ -1,11 +1,13 @@
 //! Persistence of stores, products and price entries in localStorage.
 
-use useful_app::domain::{PriceEntry, Product, Store};
+use useful_app::domain::{Currency, PriceEntry, Product, Settings, Store};
 use web_sys::Storage;
 
 const STORES_KEY: &str = "pc.stores";
 const PRODUCTS_KEY: &str = "pc.products";
 const ENTRIES_KEY: &str = "pc.entries";
+const CURRENCIES_KEY: &str = "pc.currencies";
+const SETTINGS_KEY: &str = "pc.settings";
 
 fn local_storage() -> Option<Storage> {
     web_sys::window().and_then(|w| w.local_storage().ok().flatten())
@@ -49,4 +51,29 @@ pub fn load_entries() -> Vec<PriceEntry> {
 }
 pub fn save_entries(entries: &[PriceEntry]) {
     save(ENTRIES_KEY, entries);
+}
+
+pub fn load_currencies() -> Vec<Currency> {
+    load(CURRENCIES_KEY)
+}
+pub fn save_currencies(currencies: &[Currency]) {
+    save(CURRENCIES_KEY, currencies);
+}
+
+pub fn load_settings() -> Settings {
+    let Some(ls) = local_storage() else {
+        return Settings::default();
+    };
+    ls.get_item(SETTINGS_KEY)
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<Settings>(&json).ok())
+        .unwrap_or_default()
+}
+pub fn save_settings(settings: &Settings) {
+    if let Some(ls) = local_storage() {
+        if let Ok(json) = serde_json::to_string(settings) {
+            let _ = ls.set_item(SETTINGS_KEY, &json);
+        }
+    }
 }

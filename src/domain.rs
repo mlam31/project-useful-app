@@ -44,6 +44,9 @@ pub struct PriceEntry {
     pub currency: String,
     /// Prices are temporary — promo flag records it was a promotion.
     pub promo: bool,
+    /// Optional promo label, e.g. "50% off", "2 for $5".
+    #[serde(default)]
+    pub promo_deal: String,
     /// Date the price was found, YYYY-MM-DD.
     pub date: String,
 }
@@ -61,6 +64,7 @@ impl PriceEntry {
             weight_unit: "g".to_string(),
             currency: String::new(),
             promo: false,
+            promo_deal: String::new(),
             date: String::new(),
         }
     }
@@ -330,6 +334,7 @@ mod tests {
             weight_unit: unit.into(),
             currency: "EUR".into(),
             promo: false,
+            promo_deal: String::new(),
             date: "2026-11-11".into(),
         }
     }

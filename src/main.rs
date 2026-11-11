@@ -171,7 +171,8 @@ fn compute_ranking(
             } else {
                 e.currency.clone()
             };
-            let rate = currency_rate(currencies, &cur);
+            // Treat main currency as 1:1 to avoid stale-rate issues.
+            let rate = if cur == main_code { 1.0 } else { currency_rate(currencies, &cur) };
 
             let orig_text = if cur != main_code {
                 let sym = symbol_of(currencies, &cur);
@@ -569,6 +570,23 @@ fn StoreView(
         entries.update(|v| v.retain(|e| e.id != entry_id));
     };
 
+    // Quick compare in this store: tick products and compare them.
+    let selected: RwSignal<Vec<u64>> = RwSignal::new(Vec::new());
+    let toggle = move |pid: u64| {
+        selected.update(|v| {
+            if let Some(i) = v.iter().position(|&x| x == pid) { v.remove(i); } else { v.push(pid); }
+        });
+    };
+    let compare_selected = move |_| {
+        let mut ids = selected.get_untracked();
+        ids.sort_unstable();
+        ids.dedup();
+        if !ids.is_empty() {
+            selected.set(Vec::new());
+            nav.set(Nav::Compare(ids));
+        }
+    };
+
     // ---- add price form (collapsed by default)
     let form_open = RwSignal::new(false);
     let new_product = RwSignal::new(String::new());
@@ -581,6 +599,7 @@ fn StoreView(
     let new_wunit = RwSignal::new("g".to_string());
     let new_cur = RwSignal::new(settings.get_untracked().main_currency.clone());
     let new_promo = RwSignal::new(false);
+    let new_deal = RwSignal::new(String::new());
     let new_date = RwSignal::new(today_iso());
 
     let suggestions = Memo::new(move |_| {
@@ -635,6 +654,7 @@ fn StoreView(
             new_cur.get_untracked()
         };
         entry.promo = new_promo.get_untracked();
+        entry.promo_deal = new_deal.get_untracked();
         entry.date = new_date.get_untracked();
         entries.update(|v| v.push(entry));
 
@@ -650,6 +670,7 @@ fn StoreView(
         }
         new_weight.set(String::new());
         new_promo.set(false);
+        new_deal.set(String::new());
         form_open.set(false);
     };
 
@@ -717,64 +738,73 @@ fn StoreView(
                 children={move |row: (PriceEntry, String, String)| {
                     let entry = row.0;
                     let eid = entry.id;
+                    let pid = entry.product_id;
                     let quote = domain::entry_quote(&entry);
                     let emoji = domain::category_emoji(&row.2);
-                    let qty = domain::parse_number(&entry.quantity).unwrap_or(1.0);
                     let cur = if entry.currency.is_empty() {
                         settings.get_untracked().main_currency.clone()
                     } else {
                         entry.currency.clone()
                     };
-                    let sym = symbol_of(&currencies.get_untracked(), &cur);
-                    let price_txt = match entry.qty_unit.as_str() {
-                        "g" | "kg" | "l" | "ml" => {
-                            let unit = match entry.qty_unit.as_str() {
-                                "g" => "g",
-                                "kg" => "kg",
-                                "l" => "L",
-                                _ => "mL",
-                            };
-                            format!(
-                                "{}{} · {} {}",
-                                sym,
-                                entry.price.trim(),
-                                entry.quantity.trim(),
-                                unit
-                            )
-                        }
-                        _ if qty != 1.0 => format!("{}{} × {}", sym, entry.price.trim(), qty),
-                        _ => format!("{}{}", sym, entry.price.trim()),
-                    };
-                    let sub = if let Some(k) = quote.per_kg {
-                        format!("{} /kg", fmt_price(k))
-                    } else if let Some(v) = quote.per_l {
-                        format!("{} /L", fmt_price(v))
-                    } else {
-                        match quote.per_unit {
-                            Some(u) => format!("{} each", fmt_price(u)),
-                            None => "—".to_string(),
-                        }
-                    };
+                    let main_code = settings.get_untracked().main_currency;
+                    let second = settings.get_untracked().second_currency.clone().unwrap_or_default();
+                    let cur_list = currencies.get_untracked();
+
+                    let rate_to_main = if cur == main_code { 1.0 } else { currency_rate(&cur_list, &cur) };
+                    let kg = quote.per_kg.is_some();
+                    let lit = !kg && quote.per_l.is_some();
+                    let metric = if kg { quote.per_kg } else if lit { quote.per_l } else { quote.per_unit };
+                    let _unit_lbl = if kg { "/kg" } else if lit { "/L" } else { "each" };
+
+                    let main_sym = symbol_of(&cur_list, &main_code);
+                    let primary_txt = metric
+                        .map(|m| format!("{}{} {}", main_sym, fmt_price(m * rate_to_main), if kg { "/kg" } else if lit { "/L" } else { "each" }))
+                        .unwrap_or_else(|| "—".to_string());
+
+                    let secondary_txt = if !second.is_empty() && second != main_code {
+                        let r2 = currency_rate(&cur_list, &second);
+                        if r2 > 0.0 {
+                            metric.map(|m| format!("{}{} {}", symbol_of(&cur_list, &second), fmt_price(m * rate_to_main / r2), if kg { "/kg" } else if lit { "/L" } else { "each" }))
+                        } else { None }
+                    } else { None };
+
+                    let badge_txt = if entry.promo {
+                        let d = entry.promo_deal.trim();
+                        if d.is_empty() { "PROMO".to_string() } else { d.to_uppercase() }
+                    } else { String::new() };
+
+                    let is_sel = move || selected.get().contains(&pid);
                     view! {
                         <div class="entry-row">
+                            <button
+                                class=move || if is_sel() { "row-check checked" } else { "row-check" }
+                                title="Select to compare"
+                                on:click=move |ev| { ev.stop_propagation(); toggle(pid); }
+                            >{move || if is_sel() { "✓" } else { "" }}</button>
                             <div class="e-info">
                                 <div class="e-name">{emoji}" "{row.1}</div>
                                 <div class="e-meta">
                                     {entry.date.clone()}
                                     {move || {
-                                        if entry.promo { Some(view! { <span class="promo-badge">"PROMO"</span> }) } else { None }
+                                        if entry.promo { Some(view! { <span class="promo-badge">{badge_txt.clone()}</span> }) } else { None }
                                     }}
                                 </div>
                             </div>
                             <div class="e-prices">
-                                <div class="e-sub">{price_txt}</div>
-                                <div class="e-per">{sub}</div>
+                                <div class="e-sub">{primary_txt}</div>
+                                {secondary_txt.clone().map(|t| view! { <div class="e-sec">{t}</div> })}
                             </div>
-                            <button class="icon-btn small" title="Delete this price" on:click=move |_| delete_entry(eid)>"✕"</button>
+                            <button class="icon-btn small" title="Delete this price" on:click=move |ev| { ev.stop_propagation(); delete_entry(eid); }>"✕"</button>
                         </div>
                     }
                 }}
             />
+
+            <Show when=move || !selected.get().is_empty()>
+                <button class="add-btn compare" on:click=compare_selected>
+                    "⚖️ Quick compare selected (" {move || selected.get().len()} ")"
+                </button>
+            </Show>
 
             // ---- add product card (collapsed until tapped)
             <h2 class="section">"Add a product"</h2>
@@ -848,12 +878,24 @@ fn StoreView(
                     <div class="grid2">
                         <label class="field">
                             <span class="lbl">"Quantity"</span>
-                            <input
-                                inputmode="decimal"
-                                placeholder=move || if new_qtyunit.get() == "pc" { "3" } else { "1.5" }
-                                prop:value=move || new_qty.get()
-                                on:input=move |ev| new_qty.set(event_target_value(&ev))
-                            />
+                            <div class="stepper">
+                                <button class="step-btn" type="button" on:click=move |_| {
+                                    let v = domain::parse_number(&new_qty.get_untracked()).unwrap_or(1.0);
+                                    let nv = if v <= 1.0 { 1.0 } else { (v - 1.0).round() };
+                                    new_qty.set(if (nv - nv.round()).abs() < 1e-9 { format!("{}", nv as i64) } else { fmt_price(nv) });
+                                }>"−"</button>
+                                <input
+                                    inputmode="decimal"
+                                    placeholder=move || if new_qtyunit.get() == "pc" { "1" } else { "1.5" }
+                                    prop:value=move || new_qty.get()
+                                    on:input=move |ev| new_qty.set(event_target_value(&ev))
+                                />
+                                <button class="step-btn" type="button" on:click=move |_| {
+                                    let v = domain::parse_number(&new_qty.get_untracked()).unwrap_or(0.0);
+                                    let nv = (v + 1.0).max(1.0);
+                                    new_qty.set(if (nv - nv.round()).abs() < 1e-9 { format!("{}", nv as i64) } else { fmt_price(nv) });
+                                }>"+"</button>
+                            </div>
                         </label>
                         <label class="field">
                             <span class="lbl">"Unit"</span>
@@ -933,6 +975,17 @@ fn StoreView(
                             <span>"Promo (temporary price)"</span>
                         </label>
                     </div>
+                    <Show when=move || new_promo.get()>
+                        <label class="field">
+                            <span class="lbl">"Deal (optional)"</span>
+                            <input
+                                class="store-input"
+                                placeholder="e.g. 50% off, 2 for $5"
+                                prop:value=move || new_deal.get()
+                                on:input=move |ev| new_deal.set(event_target_value(&ev))
+                            />
+                        </label>
+                    </Show>
 
                     <button class="add-btn" on:click=save_price>"Save product & price"</button>
                 </div>
@@ -1465,6 +1518,9 @@ fn CurrencyRow(
 fn SettingsView(
     settings: RwSignal<Settings>,
     currencies: RwSignal<Vec<Currency>>,
+    stores: RwSignal<Vec<Store>>,
+    products: RwSignal<Vec<Product>>,
+    entries: RwSignal<Vec<PriceEntry>>,
 ) -> impl IntoView {
     let status = RwSignal::new(String::new());
     let adding = RwSignal::new(false);
@@ -1634,8 +1690,62 @@ fn SettingsView(
                 </div>
             </Show>
 
+            <h2 class="section">"Export / Import data"</h2>
+            <div class="hint">
+                "Move your data between devices (iPhone ↔ Mac). Export creates a backup you can copy/save; Import restores it on this device (replaces current data)."
+            </div>
+            {move || {
+                let export_json = move |_| {
+                    let data = serde_json::json!({
+                        "stores": stores.get_untracked(),
+                        "products": products.get_untracked(),
+                        "entries": entries.get_untracked(),
+                        "currencies": currencies.get_untracked(),
+                        "settings": settings.get_untracked(),
+                    });
+                    match serde_json::to_string_pretty(&data) {
+                        Ok(s) => status.set(format!("EXPORT_OK\n{}", s)),
+                        Err(_) => status.set("Export failed".to_string()),
+                    }
+                };
+                let import_json = move |_| {
+                    let txt = status.get_untracked();
+                    // Accept either raw JSON or the "EXPORT_OK\n..." form
+                    let payload = txt.strip_prefix("EXPORT_OK\n").unwrap_or(&txt).trim().to_string();
+                    if payload.is_empty() {
+                        status.set("Paste JSON backup below, then tap Import".to_string());
+                        return;
+                    }
+                    let v: Result<serde_json::Value, _> = serde_json::from_str(&payload);
+                    match v {
+                        Ok(val) => {
+                            if let Ok(s) = serde_json::from_value(val.get("stores").cloned().unwrap_or_default()) { stores.set(s); }
+                            if let Ok(p) = serde_json::from_value(val.get("products").cloned().unwrap_or_default()) { products.set(p); }
+                            if let Ok(e) = serde_json::from_value(val.get("entries").cloned().unwrap_or_default()) { entries.set(e); }
+                            if let Ok(c) = serde_json::from_value(val.get("currencies").cloned().unwrap_or_default()) { currencies.set(c); }
+                            if let Ok(s) = serde_json::from_value(val.get("settings").cloned().unwrap_or_default()) { settings.set(s); }
+                            status.set("Import complete ✓".to_string());
+                        }
+                        Err(_) => status.set("Invalid JSON — paste a valid backup".to_string()),
+                    }
+                };
+                view! {
+                    <div class="row" style="gap:8px; margin-bottom:8px;">
+                        <button class="add-btn" style="margin-top:0" on:click=export_json>"Export (show JSON)"</button>
+                        <button class="add-btn" style="margin-top:0" on:click=import_json>"Import (from text)"</button>
+                    </div>
+                    <textarea
+                        class="search-input"
+                        style="min-height:140px; font-size:12px; font-family: ui-monospace, monospace;"
+                        placeholder="Tap Export to generate a backup here, then copy it (or paste a backup here and tap Import)."
+                        prop:value=move || status.get()
+                        on:input=move |ev| status.set(event_target_value(&ev))
+                    ></textarea>
+                }
+            }}
+
             <footer>
-                <p>"All data stays on this device (localStorage). Nothing is sent anywhere, except live-rate fetches and optional GPS address lookup."</p>
+                <p>"All data stays on this device (localStorage). Nothing is sent anywhere, except live-rate fetches."</p>
             </footer>
         </div>
     }
@@ -1701,7 +1811,7 @@ fn App() -> impl IntoView {
                         <CompareView ids stores products entries currencies settings nav />
                     }.into_any()
                 }
-                Nav::Settings => view! { <SettingsView settings currencies /> }.into_any(),
+                Nav::Settings => view! { <SettingsView settings currencies stores products entries /> }.into_any(),
             }}
             <TabBar nav />
         </main>

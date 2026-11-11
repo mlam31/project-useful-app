@@ -14,6 +14,7 @@ fn entry(id: u64, store: u64, price: &str, qty: &str, weight: &str, unit: &str) 
         weight_unit: unit.into(),
         currency: "EUR".into(),
         promo: false,
+        promo_deal: String::new(),
         date: "2026-11-11".into(),
     }
 }

@@ -209,16 +209,49 @@
         .chev { color: #555; font-size: 20px; flex-shrink: 0; }
 
         /* ---------- entry rows (products inside a store) ---------- */
+        .entry-card {
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
         .entry-row {
             display: flex;
             align-items: center;
             gap: 10px;
-            background: #0d0d0d;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
             padding: 10px 12px;
-            margin-bottom: 8px;
+            cursor: pointer;
         }
+        .entry-menu {
+            border-top: 1px solid #222;
+            padding: 10px 12px;
+            background: #080808;
+        }
+        .entry-detail {
+            font-size: 13px;
+            color: #ccc;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .entry-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .entry-actions .menu-item {
+            width: auto;
+            flex: 1 1 auto;
+            text-align: center;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+        }
+        .copy-list { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #333; }
+        .dots-btn { background: transparent; border: none; color: #888; font-size: 22px; padding: 4px 8px; cursor: pointer; flex-shrink: 0; }
+        .row-check {
+            width: 26px; height: 26px; border-radius: 8px; border: 1.5px solid #555;
+            background: transparent; color: #000; font-size: 14px; font-weight: 700;
+            flex-shrink: 0; cursor: pointer; padding: 0; line-height: 1;
+        }
+        .row-check.checked { background: #fff; border-color: #fff; }
         .e-info { min-width: 0; flex: 1; }
         .e-name { font-weight: 600; font-size: 15px; }
         .e-meta { font-size: 11px; color: #777; margin-top: 2px; display: flex; gap: 6px; align-items: center; }

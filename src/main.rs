@@ -587,8 +587,11 @@ fn StoreView(
         }
     };
 
-    // ---- add price form (collapsed by default)
+    // ---- add/edit price form (collapsed by default)
     let form_open = RwSignal::new(false);
+    let editing_id: RwSignal<Option<u64>> = RwSignal::new(None);
+    let menu_entry: RwSignal<Option<u64>> = RwSignal::new(None);
+    let copy_entry_id: RwSignal<Option<u64>> = RwSignal::new(None);
     let new_product = RwSignal::new(String::new());
     let new_cat = RwSignal::new("other".to_string());
     let cat_touched = RwSignal::new(false);
@@ -621,6 +624,23 @@ fn StoreView(
     let guessed = Memo::new(move |_| domain::guess_category(&new_product.get()).to_string());
     let current_cat = move || if cat_touched.get() { new_cat.get() } else { guessed.get() };
 
+    let reset_form = move || {
+        new_product.set(String::new());
+        new_cat.set("other".to_string());
+        cat_touched.set(false);
+        new_price.set(String::new());
+        if new_qtyunit.get_untracked() == "pc" {
+            new_qty.set("1".to_string());
+        } else {
+            new_qty.set(String::new());
+        }
+        new_weight.set(String::new());
+        new_promo.set(false);
+        new_deal.set(String::new());
+        editing_id.set(None);
+        form_open.set(false);
+    };
+
     let save_price = move |_| {
         let name = new_product.get_untracked().trim().to_string();
         if name.is_empty() {
@@ -640,38 +660,45 @@ fn StoreView(
                 id
             });
 
-        let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
-        let mut entry = PriceEntry::new(eid, store_id, pid);
-        entry.price = new_price.get_untracked();
-        let qty = new_qty.get_untracked();
-        entry.quantity = if qty.trim().is_empty() { "1".to_string() } else { qty };
-        entry.qty_unit = new_qtyunit.get_untracked();
-        entry.unit_weight = new_weight.get_untracked();
-        entry.weight_unit = new_wunit.get_untracked();
-        entry.currency = if new_cur.get_untracked().is_empty() {
+        let qty_val = new_qty.get_untracked();
+        let qty_val = if qty_val.trim().is_empty() { "1".to_string() } else { qty_val };
+        let cur_val = if new_cur.get_untracked().is_empty() {
             settings.get_untracked().main_currency.clone()
         } else {
             new_cur.get_untracked()
         };
-        entry.promo = new_promo.get_untracked();
-        entry.promo_deal = new_deal.get_untracked();
-        entry.date = new_date.get_untracked();
-        entries.update(|v| v.push(entry));
 
-        // Reset the form (keep the date and qty unit, they usually stay the same).
-        new_product.set(String::new());
-        new_cat.set("other".to_string());
-        cat_touched.set(false);
-        new_price.set(String::new());
-        if new_qtyunit.get_untracked() == "pc" {
-            new_qty.set("1".to_string());
+        if let Some(edit_eid) = editing_id.get_untracked() {
+            entries.update(|v| {
+                if let Some(e) = v.iter_mut().find(|e| e.id == edit_eid) {
+                    e.product_id = pid;
+                    e.price = new_price.get_untracked();
+                    e.quantity = qty_val.clone();
+                    e.qty_unit = new_qtyunit.get_untracked();
+                    e.unit_weight = new_weight.get_untracked();
+                    e.weight_unit = new_wunit.get_untracked();
+                    e.currency = cur_val.clone();
+                    e.promo = new_promo.get_untracked();
+                    e.promo_deal = new_deal.get_untracked();
+                    e.date = new_date.get_untracked();
+                }
+            });
         } else {
-            new_qty.set(String::new());
+            let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
+            let mut entry = PriceEntry::new(eid, store_id, pid);
+            entry.price = new_price.get_untracked();
+            entry.quantity = qty_val;
+            entry.qty_unit = new_qtyunit.get_untracked();
+            entry.unit_weight = new_weight.get_untracked();
+            entry.weight_unit = new_wunit.get_untracked();
+            entry.currency = cur_val;
+            entry.promo = new_promo.get_untracked();
+            entry.promo_deal = new_deal.get_untracked();
+            entry.date = new_date.get_untracked();
+            entries.update(|v| v.push(entry));
         }
-        new_weight.set(String::new());
-        new_promo.set(false);
-        new_deal.set(String::new());
-        form_open.set(false);
+
+        reset_form();
     };
 
     // ---- store header
@@ -719,100 +746,13 @@ fn StoreView(
                 on:input=move |ev| update_store(stores, store_id, move |s| s.address = Some(event_target_value(&ev)))
             />
 
-            // ---- recorded products
-            <h2 class="section">"Products recorded here"</h2>
-            <input
-                class="search-input"
-                placeholder="Filter products"
-                prop:value=move || filter.get()
-                on:input=move |ev| filter.set(event_target_value(&ev))
-            />
-
-            <Show when=move || rows.get().is_empty()>
-                <div class="hint">"No prices recorded yet. Add the first one below."</div>
-            </Show>
-
-            <For
-                each=move || rows.get()
-                key=|row| row.0.id
-                children={move |row: (PriceEntry, String, String)| {
-                    let entry = row.0;
-                    let eid = entry.id;
-                    let pid = entry.product_id;
-                    let quote = domain::entry_quote(&entry);
-                    let emoji = domain::category_emoji(&row.2);
-                    let cur = if entry.currency.is_empty() {
-                        settings.get_untracked().main_currency.clone()
-                    } else {
-                        entry.currency.clone()
-                    };
-                    let main_code = settings.get_untracked().main_currency;
-                    let second = settings.get_untracked().second_currency.clone().unwrap_or_default();
-                    let cur_list = currencies.get_untracked();
-
-                    let rate_to_main = if cur == main_code { 1.0 } else { currency_rate(&cur_list, &cur) };
-                    let kg = quote.per_kg.is_some();
-                    let lit = !kg && quote.per_l.is_some();
-                    let metric = if kg { quote.per_kg } else if lit { quote.per_l } else { quote.per_unit };
-                    let _unit_lbl = if kg { "/kg" } else if lit { "/L" } else { "each" };
-
-                    let main_sym = symbol_of(&cur_list, &main_code);
-                    let primary_txt = metric
-                        .map(|m| format!("{}{} {}", main_sym, fmt_price(m * rate_to_main), if kg { "/kg" } else if lit { "/L" } else { "each" }))
-                        .unwrap_or_else(|| "—".to_string());
-
-                    let secondary_txt = if !second.is_empty() && second != main_code {
-                        let r2 = currency_rate(&cur_list, &second);
-                        if r2 > 0.0 {
-                            metric.map(|m| format!("{}{} {}", symbol_of(&cur_list, &second), fmt_price(m * rate_to_main / r2), if kg { "/kg" } else if lit { "/L" } else { "each" }))
-                        } else { None }
-                    } else { None };
-
-                    let badge_txt = if entry.promo {
-                        let d = entry.promo_deal.trim();
-                        if d.is_empty() { "PROMO".to_string() } else { d.to_uppercase() }
-                    } else { String::new() };
-
-                    let is_sel = move || selected.get().contains(&pid);
-                    view! {
-                        <div class="entry-row">
-                            <button
-                                class=move || if is_sel() { "row-check checked" } else { "row-check" }
-                                title="Select to compare"
-                                on:click=move |ev| { ev.stop_propagation(); toggle(pid); }
-                            >{move || if is_sel() { "✓" } else { "" }}</button>
-                            <div class="e-info">
-                                <div class="e-name">{emoji}" "{row.1}</div>
-                                <div class="e-meta">
-                                    {entry.date.clone()}
-                                    {move || {
-                                        if entry.promo { Some(view! { <span class="promo-badge">{badge_txt.clone()}</span> }) } else { None }
-                                    }}
-                                </div>
-                            </div>
-                            <div class="e-prices">
-                                <div class="e-sub">{primary_txt}</div>
-                                {secondary_txt.clone().map(|t| view! { <div class="e-sec">{t}</div> })}
-                            </div>
-                            <button class="icon-btn small" title="Delete this price" on:click=move |ev| { ev.stop_propagation(); delete_entry(eid); }>"✕"</button>
-                        </div>
-                    }
-                }}
-            />
-
-            <Show when=move || !selected.get().is_empty()>
-                <button class="add-btn compare" on:click=compare_selected>
-                    "⚖️ Quick compare selected (" {move || selected.get().len()} ")"
-                </button>
-            </Show>
-
-            // ---- add product card (collapsed until tapped)
-            <h2 class="section">"Add a product"</h2>
+            // ---- add / edit product card
+            <h2 class="section">{move || if editing_id.get().is_some() { "Edit price" } else { "Add a product" }}</h2>
             <Show
                 when=move || form_open.get()
                 fallback=move || {
                     view! {
-                        <button class="collapse-btn" on:click=move |_| form_open.set(true)>
+                        <button class="collapse-btn" on:click=move |_| { editing_id.set(None); form_open.set(true); }>
                             "＋ Add a product"
                         </button>
                     }
@@ -820,8 +760,8 @@ fn StoreView(
             >
                 <div class="card">
                     <div class="row form-head">
-                        <span class="form-title">"New product & price"</span>
-                        <button class="icon-btn small" title="Collapse" on:click=move |_| form_open.set(false)>"—"</button>
+                        <span class="form-title">{move || if editing_id.get().is_some() { "Edit price" } else { "New product & price" }}</span>
+                        <button class="icon-btn small" title="Cancel" on:click=move |_| reset_form()>"✕"</button>
                     </div>
 
                     <input
@@ -987,9 +927,206 @@ fn StoreView(
                         </label>
                     </Show>
 
-                    <button class="add-btn" on:click=save_price>"Save product & price"</button>
+                    <button class="add-btn" on:click=save_price>{move || if editing_id.get().is_some() { "Save changes" } else { "Save product & price" }}</button>
                 </div>
             </Show>
+
+            // ---- recorded products
+            <h2 class="section">"Products recorded here"</h2>
+            <input
+                class="search-input"
+                placeholder="Filter products"
+                prop:value=move || filter.get()
+                on:input=move |ev| filter.set(event_target_value(&ev))
+            />
+
+            <Show when=move || rows.get().is_empty()>
+                <div class="hint">"No prices recorded yet. Add the first one above."</div>
+            </Show>
+
+            <For
+                each=move || rows.get()
+                key=|row| row.0.id
+                children={move |row: (PriceEntry, String, String)| {
+                    let entry = row.0;
+                    let eid = entry.id;
+                    let pid = entry.product_id;
+                    let quote = domain::entry_quote(&entry);
+                    let emoji = domain::category_emoji(&row.2);
+                    let cur = if entry.currency.is_empty() {
+                        settings.get_untracked().main_currency.clone()
+                    } else {
+                        entry.currency.clone()
+                    };
+                    let main_code = settings.get_untracked().main_currency;
+                    let second = settings.get_untracked().second_currency.clone().unwrap_or_default();
+                    let cur_list = currencies.get_untracked();
+
+                    let rate_to_main = if cur == main_code { 1.0 } else { currency_rate(&cur_list, &cur) };
+                    let kg = quote.per_kg.is_some();
+                    let lit = !kg && quote.per_l.is_some();
+                    let metric = if kg { quote.per_kg } else if lit { quote.per_l } else { quote.per_unit };
+                    let unit_str = if kg { "/kg" } else if lit { "/L" } else { "each" };
+
+                    let main_sym = symbol_of(&cur_list, &main_code);
+                    let primary_txt = metric
+                        .map(|m| format!("{}{} {}", main_sym, fmt_price(m * rate_to_main), unit_str))
+                        .unwrap_or_else(|| "—".to_string());
+
+                    let secondary_txt = if !second.is_empty() && second != main_code {
+                        let r2 = currency_rate(&cur_list, &second);
+                        if r2 > 0.0 {
+                            metric.map(|m| format!("{}{} {}", symbol_of(&cur_list, &second), fmt_price(m * rate_to_main / r2), unit_str))
+                        } else { None }
+                    } else { None };
+
+                    // Extra: price per volume/weight details (e.g. per 100g)
+                    let mut details: Vec<String> = Vec::new();
+                    if let Some(k) = quote.per_kg {
+                        let per100g = k / 10.0;
+                        details.push(format!("{}{} /100g", main_sym, fmt_price(per100g * rate_to_main)));
+                        details.push(format!("{}{} /kg", main_sym, fmt_price(k * rate_to_main)));
+                        if !second.is_empty() && second != main_code {
+                            let r2 = currency_rate(&cur_list, &second);
+                            if r2 > 0.0 {
+                                let s2 = symbol_of(&cur_list, &second);
+                                details.push(format!("{}{} /kg", s2, fmt_price(k * rate_to_main / r2)));
+                            }
+                        }
+                    } else if let Some(v) = quote.per_l {
+                        let per100ml = v / 10.0;
+                        details.push(format!("{}{} /100mL", main_sym, fmt_price(per100ml * rate_to_main)));
+                        details.push(format!("{}{} /L", main_sym, fmt_price(v * rate_to_main)));
+                        if !second.is_empty() && second != main_code {
+                            let r2 = currency_rate(&cur_list, &second);
+                            if r2 > 0.0 {
+                                let s2 = symbol_of(&cur_list, &second);
+                                details.push(format!("{}{} /L", s2, fmt_price(v * rate_to_main / r2)));
+                            }
+                        }
+                    } else if let Some(u) = quote.per_unit {
+                        details.push(format!("{}{} each", main_sym, fmt_price(u * rate_to_main)));
+                        if !second.is_empty() && second != main_code {
+                            let r2 = currency_rate(&cur_list, &second);
+                            if r2 > 0.0 {
+                                details.push(format!("{}{} each", symbol_of(&cur_list, &second), fmt_price(u * rate_to_main / r2)));
+                            }
+                        }
+                    }
+                    let detail_txt = details.join(" · ");
+
+                    let badge_txt = if entry.promo {
+                        let d = entry.promo_deal.trim();
+                        if d.is_empty() { "PROMO".to_string() } else { d.to_uppercase() }
+                    } else { String::new() };
+
+                    let entry_sv = StoredValue::new(entry.clone());
+                    let detail_sv = StoredValue::new(detail_txt.clone());
+                    let badge_sv = StoredValue::new(badge_txt.clone());
+                    let primary_sv = StoredValue::new(primary_txt.clone());
+                    let secondary_sv = StoredValue::new(secondary_txt.clone());
+                    let name_sv = StoredValue::new(row.1.clone());
+                    let is_sel = move || selected.get().contains(&pid);
+                    let is_menu = move || menu_entry.get() == Some(eid);
+                    let is_copying = move || copy_entry_id.get() == Some(eid);
+
+                    view! {
+                        <div class="entry-card">
+                            <div class="entry-row" on:click=move |_| {
+                                menu_entry.update(|m| *m = if *m == Some(eid) { None } else { Some(eid) });
+                                copy_entry_id.set(None);
+                            }>
+                                <button
+                                    class=move || if is_sel() { "row-check checked" } else { "row-check" }
+                                    title="Select to compare"
+                                    on:click=move |ev| { ev.stop_propagation(); toggle(pid); }
+                                >{move || if is_sel() { "✓" } else { "" }}</button>
+                                <div class="e-info">
+                                    <div class="e-name">{emoji}" "{move || name_sv.get_value()}</div>
+                                    <div class="e-meta">
+                                        {move || entry_sv.get_value().date.clone()}
+                                        {move || {
+                                            let e = entry_sv.get_value();
+                                            if e.promo { Some(view! { <span class="promo-badge">{badge_sv.get_value()}</span> }) } else { None }
+                                        }}
+                                    </div>
+                                </div>
+                                <div class="e-prices">
+                                    <div class="e-sub">{move || primary_sv.get_value()}</div>
+                                    {move || secondary_sv.get_value().map(|t| view! { <div class="e-sec">{t}</div> })}
+                                </div>
+                            </div>
+
+                            <Show when=is_menu>
+                                <div class="entry-menu">
+                                    <div class="entry-detail">{move || detail_sv.get_value()}</div>
+                                    <div class="entry-actions">
+                                        <button class="menu-item" on:click=move |_| {
+                                            let e = entry_sv.get_value();
+                                            let pname = products.get_untracked().iter().find(|p| p.id == e.product_id).map(|p| p.name.clone()).unwrap_or_default();
+                                            let pcat = products.get_untracked().iter().find(|p| p.id == e.product_id).map(|p| p.category.clone()).unwrap_or_else(|| "other".to_string());
+                                            new_product.set(pname);
+                                            new_cat.set(pcat);
+                                            cat_touched.set(true);
+                                            new_price.set(e.price.clone());
+                                            new_qty.set(e.quantity.clone());
+                                            new_qtyunit.set(e.qty_unit.clone());
+                                            new_weight.set(e.unit_weight.clone());
+                                            new_wunit.set(e.weight_unit.clone());
+                                            new_cur.set(if e.currency.is_empty() { settings.get_untracked().main_currency } else { e.currency.clone() });
+                                            new_promo.set(e.promo);
+                                            new_deal.set(e.promo_deal.clone());
+                                            new_date.set(e.date.clone());
+                                            editing_id.set(Some(eid));
+                                            form_open.set(true);
+                                            menu_entry.set(None);
+                                        }>"✏️ Edit price"</button>
+                                        <button class="menu-item" on:click=move |_| {
+                                            copy_entry_id.update(|c| *c = if *c == Some(eid) { None } else { Some(eid) });
+                                        }>"📋 Copy to another store"</button>
+                                        <button class="menu-item" on:click=move |_| {
+                                            menu_entry.set(None);
+                                            delete_entry(eid);
+                                        }>"🗑 Delete"</button>
+                                    </div>
+                                    <Show when=is_copying>
+                                        <div class="copy-list">
+                                            <div class="hint" style="margin:6px 0;">"Pick a store:"</div>
+                                            {move || {
+                                                let src = entry_sv.get_value();
+                                                stores.get().into_iter().filter(|s| s.id != src.store_id).map(|s| {
+                                                    let src2 = src.clone();
+                                                    let sid = s.id;
+                                                    let sname = s.name.clone();
+                                                    view! {
+                                                        <button class="chip" style="margin:2px;" on:click=move |_| {
+                                                            let mut ne = src2.clone();
+                                                            let nid = next_id(entries.get_untracked().iter().map(|e| e.id));
+                                                            ne.id = nid;
+                                                            ne.store_id = sid;
+                                                            ne.date = today_iso();
+                                                            entries.update(|v| v.push(ne));
+                                                            copy_entry_id.set(None);
+                                                            menu_entry.set(None);
+                                                        }>{sname}</button>
+                                                    }
+                                                }).collect_view()
+                                            }}
+                                        </div>
+                                    </Show>
+                                </div>
+                            </Show>
+                        </div>
+                    }
+                }}
+            />
+
+            <Show when=move || !selected.get().is_empty()>
+                <button class="add-btn compare" on:click=compare_selected>
+                    "⚖️ Quick compare selected (" {move || selected.get().len()} ")"
+                </button>
+            </Show>
+
         </div>
     }
 }

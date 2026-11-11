@@ -119,6 +119,19 @@
             font-weight: 600;
         }
         .search-input { font-weight: 400; }
+        .search-wrap { position: relative; margin-bottom: 14px; }
+        .search-add {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background: #111; color: #fff;
+            font-size: 20px; line-height: 1;
+            cursor: pointer; padding: 0;
+        }
         .stepper { display: flex; align-items: center; gap: 6px; }
         .stepper input { flex: 1; text-align: center; min-width: 0; }
         .step-btn {
@@ -180,6 +193,20 @@
             cursor: pointer;
         }
         .tab.active { color: #fff; background: #161616; }
+        .scan-fab {
+            position: fixed;
+            top: calc(var(--safe-top) + 10px);
+            right: 16px;
+            z-index: 20;
+            background: #111;
+            color: #fff;
+            border: 1px solid #333;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
 
         /* ---------- store & product list rows ---------- */
         .store-row {

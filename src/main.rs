@@ -18,6 +18,16 @@ extern "C" {
     fn js_stop_barcode_scan();
 }
 
+fn haptic() {
+    if let Some(w) = web_sys::window() {
+        let nav = w.navigator();
+        let _ = js_sys::Reflect::get(&nav, &"vibrate".into())
+            .ok()
+            .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+            .map(|f| f.call1(&nav, &JsValue::from(10)));
+    }
+}
+
 // ---------------------------------------------------------------- helpers
 
 /// Today's date (device local time) as YYYY-MM-DD.
@@ -421,12 +431,11 @@ fn pin_address(
 #[component]
 fn TabBar(nav: RwSignal<Nav>, settings: RwSignal<Settings>) -> impl IntoView {
     let stores_active = move || {
-        matches!(nav.get(), Nav::Stores | Nav::StoreDetail(_) | Nav::Compare(_))
+        matches!(nav.get(), Nav::Stores | Nav::StoreDetail(_))
     };
     let products_active = move || {
         matches!(nav.get(), Nav::Products | Nav::ProductDetail(_) | Nav::Compare(_))
     };
-    let scan_active = move || matches!(nav.get(), Nav::Scan);
     let settings_active = move || matches!(nav.get(), Nav::Settings);
 
     view! {
@@ -435,25 +444,19 @@ fn TabBar(nav: RwSignal<Nav>, settings: RwSignal<Settings>) -> impl IntoView {
                 class=move || if stores_active() { "tab active" } else { "tab" }
                 on:click=move |_| nav.set(Nav::Stores)
             >
-                {move || format!("🏪 {}", tr(&settings.get().language, "stores"))}
+                {move || tr(&settings.get().language, "stores").to_string()}
             </button>
             <button
                 class=move || if products_active() { "tab active" } else { "tab" }
                 on:click=move |_| nav.set(Nav::Products)
             >
-                {move || format!("🔍 {}", tr(&settings.get().language, "products"))}
-            </button>
-            <button
-                class=move || if scan_active() { "tab active" } else { "tab" }
-                on:click=move |_| nav.set(Nav::Scan)
-            >
-                {move || format!("📷 {}", tr(&settings.get().language, "scan"))}
+                {move || tr(&settings.get().language, "products").to_string()}
             </button>
             <button
                 class=move || if settings_active() { "tab active" } else { "tab" }
                 on:click=move |_| nav.set(Nav::Settings)
             >
-                {move || format!("⚙️ {}", tr(&settings.get().language, "settings"))}
+                {move || tr(&settings.get().language, "settings").to_string()}
             </button>
         </nav>
     }
@@ -483,6 +486,7 @@ fn StoresView(
     });
 
     let add_store = move |_| {
+        haptic();
         let name = new_name.get_untracked().trim().to_string();
         if name.is_empty() {
             return;
@@ -495,30 +499,25 @@ fn StoresView(
 
     view! {
         <div class="page">
-            <header><h1>"🏪 Stores"</h1></header>
+            <header><h1>"Stores"</h1></header>
 
-            <input
-                class="search-input"
-                placeholder="Search stores"
-                prop:value=move || search.get()
-                on:input=move |ev| search.set(event_target_value(&ev))
-            />
+            <div class="search-wrap">
+                <input
+                    class="search-input"
+                    style="margin-bottom:0; padding-right:44px;"
+                    placeholder="Search stores"
+                    prop:value=move || search.get()
+                    on:input=move |ev| search.set(event_target_value(&ev))
+                />
+                <button class="search-add" title="Add store" on:click=move |_| { haptic(); adding.update(|v| *v = !*v); }>"+"</button>
+            </div>
 
-            <Show
-                when=move || adding.get()
-                fallback=move || {
-                    view! {
-                        <button class="collapse-btn" on:click=move |_| adding.set(true)>
-                            "＋ Add a store"
-                        </button>
-                    }
-                }
-            >
-                <div class="card">
+            <Show when=move || adding.get()>
+                <div class="card" style="margin-top:10px;">
                     <div class="row">
                         <input
                             class="store-input"
-                            placeholder="Store name"
+                            placeholder="New store name"
                             prop:value=move || new_name.get()
                             on:input=move |ev| new_name.set(event_target_value(&ev))
                         />
@@ -718,6 +717,7 @@ fn StoreView(
     };
 
     let save_price = move |_| {
+        haptic();
         let name = new_product.get_untracked().trim().to_string();
         if name.is_empty() {
             return;
@@ -812,7 +812,7 @@ fn StoreView(
                     <button class="menu-item" on:click=move |_| {
                         menu_open.set(false);
                         delete_store(());
-                    }>"🗑 Delete this store"</button>
+                    }>"Delete this store"</button>
                 </div>
             </Show>
 
@@ -837,7 +837,7 @@ fn StoreView(
                 fallback=move || {
                     view! {
                         <button class="collapse-btn" on:click=move |_| { editing_id.set(None); form_open.set(true); }>
-                            "＋ Add a product"
+                            "Add a product"
                         </button>
                     }
                 }
@@ -1216,10 +1216,10 @@ fn StoreView(
                                             editing_id.set(None); // save as new entry to keep history
                                             form_open.set(true);
                                             menu_entry.set(None);
-                                        }>"＋ New price"</button>
+                                        }>"New price"</button>
                                         <button class="menu-item" on:click=move |_| {
                                             copy_entry_id.update(|c| *c = if *c == Some(eid) { None } else { Some(eid) });
-                                        }>"📋 Copy to another store"</button>
+                                        }>"Copy to another store"</button>
                                     </div>
                                     <Show when=is_copying>
                                         <div class="copy-list">
@@ -1255,11 +1255,11 @@ fn StoreView(
 
             <Show when=move || !selected_entries.get().is_empty()>
                 <div class="row" style="gap:8px;">
-                    <button class="add-btn compare" style="flex:1; margin-top:8px;" on:click=compare_selected>
-                        "⚖️ Compare (" {move || selected_entries.get().len()} ")"
+                    <button class="add-btn compare" style="flex:1; margin-top:8px;" on:click=move |_| { haptic(); compare_selected(()); }>
+                        "Compare (" {move || selected_entries.get().len()} ")"
                     </button>
-                    <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; color:#fff; border-color:#844;" on:click=delete_selected>
-                        "🗑 Delete (" {move || selected_entries.get().len()} ")"
+                    <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; color:#fff; border-color:#844;" on:click=move |_| { haptic(); delete_selected(()); }>
+                        "Delete (" {move || selected_entries.get().len()} ")"
                     </button>
                 </div>
             </Show>
@@ -1342,7 +1342,7 @@ fn ProductsView(
 
     view! {
         <div class="page">
-            <header><h1>"🔍 Products"</h1></header>
+            <header><h1>"Products"</h1></header>
 
             <input
                 class="search-input"
@@ -1405,8 +1405,8 @@ fn ProductsView(
             />
 
             <Show when=move || !selected.get().is_empty()>
-                <button class="add-btn compare" on:click=compare_selected>
-                    "⚖️ Compare selected (" {move || selected.get().len()} ")"
+                <button class="add-btn compare" on:click=move |_| { haptic(); compare_selected(()); }>
+                    "Compare selected (" {move || selected.get().len()} ")"
                 </button>
             </Show>
         </div>
@@ -1666,7 +1666,7 @@ fn ProductView(
                     <button class="menu-item" on:click=move |_| {
                         menu_open.set(false);
                         delete_product(());
-                    }>"🗑 Delete this product"</button>
+                    }>"Delete this product"</button>
                 </div>
             </Show>
             <h1 class="product-title">{move || product_line.get()}</h1>
@@ -1702,7 +1702,7 @@ fn CompareView(
     view! {
         <div class="page">
             <button class="back-btn" on:click=move |_| nav.set(Nav::Products)>"← Products"</button>
-            <h1 class="product-title">"⚖️ Comparison (" {count} "products)"</h1>
+            <h1 class="product-title">"Comparison (" {count} " products)"</h1>
 
             <ComparisonList
                 ids
@@ -1863,6 +1863,7 @@ fn ScanView(
     let status = RwSignal::new(String::new());
     let result: RwSignal<Option<ScanResult>> = RwSignal::new(None);
     let selected_store: RwSignal<String> = RwSignal::new(String::new());
+    let new_store_name = RwSignal::new(String::new());
     let add_price = RwSignal::new(String::new());
     let add_qty = RwSignal::new("1".to_string());
     let scanning = RwSignal::new(false);
@@ -1984,10 +1985,26 @@ fn ScanView(
     };
 
     let add_to_store = move |_| {
-        let Some(res) = result.get_untracked() else { return; };
-        let sid: u64 = match selected_store.get_untracked().parse() {
-            Ok(v) => v,
-            Err(_) => { status.set("Pick a store first".to_string()); return; }
+        haptic();
+        let Some(res) = result.get_untracked() else {
+            status.set("Look up a product first".to_string());
+            return;
+        };
+        let sel = selected_store.get_untracked();
+        let sid: u64 = if sel == "__new__" {
+            let name = new_store_name.get_untracked().trim().to_string();
+            if name.is_empty() {
+                status.set("Enter a new store name".to_string());
+                return;
+            }
+            let id = next_id(stores.get_untracked().iter().map(|s| s.id));
+            stores.update(|v| v.push(Store { id, name, address: None }));
+            id
+        } else {
+            match sel.parse() {
+                Ok(v) => v,
+                Err(_) => { status.set("Pick a store first (or create a new one)".to_string()); return; }
+            }
         };
         // find or create product by barcode
         let pid = products.get_untracked().iter()
@@ -2027,12 +2044,12 @@ fn ScanView(
         entry.currency = settings.get_untracked().main_currency;
         entry.date = today_iso();
         entries.update(|v| v.push(entry));
-        status.set("Added to store ✓".to_string());
+        status.set("Added to store".to_string());
     };
 
     view! {
         <div class="page">
-            <header><h1>{move || format!("📷 {}", tr(&settings.get().language, "scan_title"))}</h1></header>
+            <header><h1>"Scan & rate"</h1></header>
             <div class="hint">"Enter a barcode number to look up a product (Open Food Facts). You’ll see a grade /100, good/bad ingredients, and can add it to a store."</div>
 
             <div class="card">
@@ -2049,7 +2066,7 @@ fn ScanView(
                     <button class="add-btn" style="flex:1; margin-top:8px;" on:click=lookup>"Look up"</button>
                     <Show
                         when=move || scanning.get()
-                        fallback=move || view! { <button class="add-btn" style="flex:1; margin-top:8px;" on:click=start_scan>"📷 Use camera"</button> }
+                        fallback=move || view! { <button class="add-btn" style="flex:1; margin-top:8px;" on:click=move |ev| { haptic(); start_scan(ev); }>"Use camera"</button> }
                     >
                         <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; border-color:#844;" on:click=stop_scan>"Stop camera"</button>
                     </Show>
@@ -2103,9 +2120,16 @@ fn ScanView(
                                 <span class="lbl">"Store"</span>
                                 <select class="unit-select wide" prop:value=move || selected_store.get() on:change=move |ev| selected_store.set(event_target_value(&ev))>
                                     <option value="">"Select a store…"</option>
+                                    <option value="__new__">"New store…"</option>
                                     {move || stores.get().iter().map(|s| view!{ <option value=s.id.to_string()>{s.name.clone()}</option> }).collect_view()}
                                 </select>
                             </label>
+                            <Show when=move || selected_store.get() == "__new__">
+                                <label class="field">
+                                    <span class="lbl">"New store name"</span>
+                                    <input placeholder="Store name" prop:value=move || new_store_name.get() on:input=move |ev| new_store_name.set(event_target_value(&ev)) />
+                                </label>
+                            </Show>
                             <div class="grid2">
                                 <label class="field">
                                     <span class="lbl">"Price (optional)"</span>
@@ -2144,6 +2168,7 @@ fn SettingsView(
     let main = move || settings.get().main_currency;
 
     let add_currency = move |_| {
+        haptic();
         let code = new_code.get_untracked().trim().to_uppercase();
         let symbol = new_symbol.get_untracked().trim().to_string();
         let rate = domain::parse_number(&new_rate.get_untracked()).unwrap_or(1.0);
@@ -2204,7 +2229,7 @@ fn SettingsView(
 
     view! {
         <div class="page">
-            <header><h1>{move || format!("⚙️ {}", tr(&settings.get().language, "settings"))}</h1></header>
+            <header><h1>{move || tr(&settings.get().language, "settings").to_string()}</h1></header>
 
             <h2 class="section">{move || tr(&settings.get().language, "language").to_string()}</h2>
             <label class="field">
@@ -2272,7 +2297,7 @@ fn SettingsView(
                 }}
             />
 
-            <button class="add-btn" on:click=fetch_live>"↻ Fetch live rates"</button>
+            <button class="add-btn" on:click=move |_| { haptic(); fetch_live(()); }>"Fetch live rates"</button>
             <Show when=move || !status.get().is_empty()>
                 <div class="hint">{move || status.get()}</div>
             </Show>
@@ -2283,7 +2308,7 @@ fn SettingsView(
                 fallback=move || {
                     view! {
                         <button class="collapse-btn" on:click=move |_| adding.set(true)>
-                            "＋ Add a currency"
+                            "Add a currency"
                         </button>
                     }
                 }
@@ -2419,6 +2444,7 @@ fn App() -> impl IntoView {
 
     view! {
         <main>
+            <button class="scan-fab" title="Scan" on:click=move |_| { haptic(); nav.set(Nav::Scan); }>"Scan"</button>
             {move || match nav.get() {
                 Nav::Stores => view! { <StoresView stores entries nav /> }.into_any(),
                 Nav::StoreDetail(id) => {

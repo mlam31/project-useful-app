@@ -10,6 +10,14 @@ use useful_app::domain::{self, Currency, PriceEntry, Product, Settings, Store};
 use wasm_bindgen::prelude::*;
 use web_sys::PositionOptions;
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = window, js_name = startBarcodeScan)]
+    fn js_start_barcode_scan(on_result: &js_sys::Function, on_error: &js_sys::Function) -> js_sys::Promise;
+    #[wasm_bindgen(js_namespace = window, js_name = stopBarcodeScan)]
+    fn js_stop_barcode_scan();
+}
+
 // ---------------------------------------------------------------- helpers
 
 /// Today's date (device local time) as YYYY-MM-DD.
@@ -75,6 +83,42 @@ fn currency_rate(currencies: &[Currency], code: &str) -> f64 {
         .unwrap_or(1.0)
 }
 
+// ---------------------------------------------------------------- i18n
+
+fn tr(lang: &str, key: &str) -> &'static str {
+    match (lang, key) {
+        ("fr", "stores") => "Magasins",
+        ("es", "stores") => "Tiendas",
+        ("zh", "stores") => "商店",
+        (_, "stores") => "Stores",
+        ("fr", "products") => "Produits",
+        ("es", "products") => "Productos",
+        ("zh", "products") => "产品",
+        (_, "products") => "Products",
+        ("fr", "scan") => "Scanner",
+        ("es", "scan") => "Escanear",
+        ("zh", "scan") => "扫描",
+        (_, "scan") => "Scan",
+        ("fr", "settings") => "Réglages",
+        ("es", "settings") => "Ajustes",
+        ("zh", "settings") => "设置",
+        (_, "settings") => "Settings",
+        ("fr", "language") => "Langue",
+        ("es", "language") => "Idioma",
+        ("zh", "language") => "语言",
+        (_, "language") => "Language",
+        ("fr", "app_language") => "Langue de l'app",
+        ("es", "app_language") => "Idioma de la app",
+        ("zh", "app_language") => "应用语言",
+        (_, "app_language") => "App language",
+        ("fr", "scan_title") => "Scanner & évaluer",
+        ("es", "scan_title") => "Escanear y evaluar",
+        ("zh", "scan_title") => "扫描与评分",
+        (_, "scan_title") => "Scan & rate",
+        _ => "",
+    }
+}
+
 // ---------------------------------------------------------------- navigation
 
 #[derive(Clone, PartialEq)]
@@ -84,6 +128,7 @@ enum Nav {
     Products,
     ProductDetail(u64),
     Compare(Vec<u64>),
+    Scan,
     Settings,
 }
 
@@ -374,13 +419,14 @@ fn pin_address(
 // ---------------------------------------------------------------- tab bar
 
 #[component]
-fn TabBar(nav: RwSignal<Nav>) -> impl IntoView {
+fn TabBar(nav: RwSignal<Nav>, settings: RwSignal<Settings>) -> impl IntoView {
     let stores_active = move || {
         matches!(nav.get(), Nav::Stores | Nav::StoreDetail(_) | Nav::Compare(_))
     };
     let products_active = move || {
         matches!(nav.get(), Nav::Products | Nav::ProductDetail(_) | Nav::Compare(_))
     };
+    let scan_active = move || matches!(nav.get(), Nav::Scan);
     let settings_active = move || matches!(nav.get(), Nav::Settings);
 
     view! {
@@ -389,19 +435,25 @@ fn TabBar(nav: RwSignal<Nav>) -> impl IntoView {
                 class=move || if stores_active() { "tab active" } else { "tab" }
                 on:click=move |_| nav.set(Nav::Stores)
             >
-                "🏪 Stores"
+                {move || format!("🏪 {}", tr(&settings.get().language, "stores"))}
             </button>
             <button
                 class=move || if products_active() { "tab active" } else { "tab" }
                 on:click=move |_| nav.set(Nav::Products)
             >
-                "🔍 Products"
+                {move || format!("🔍 {}", tr(&settings.get().language, "products"))}
+            </button>
+            <button
+                class=move || if scan_active() { "tab active" } else { "tab" }
+                on:click=move |_| nav.set(Nav::Scan)
+            >
+                {move || format!("📷 {}", tr(&settings.get().language, "scan"))}
             </button>
             <button
                 class=move || if settings_active() { "tab active" } else { "tab" }
                 on:click=move |_| nav.set(Nav::Settings)
             >
-                "⚙️ Settings"
+                {move || format!("⚙️ {}", tr(&settings.get().language, "settings"))}
             </button>
         </nav>
     }
@@ -566,25 +618,49 @@ fn StoreView(
         list
     });
 
-    let delete_entry = move |entry_id: u64| {
-        entries.update(|v| v.retain(|e| e.id != entry_id));
-    };
-
-    // Quick compare in this store: tick products and compare them.
-    let selected: RwSignal<Vec<u64>> = RwSignal::new(Vec::new());
-    let toggle = move |pid: u64| {
-        selected.update(|v| {
-            if let Some(i) = v.iter().position(|&x| x == pid) { v.remove(i); } else { v.push(pid); }
+    // Tick entries in this store to compare or delete them.
+    let selected_entries: RwSignal<Vec<u64>> = RwSignal::new(Vec::new());
+    let toggle_entry = move |eid: u64| {
+        selected_entries.update(|v| {
+            if let Some(i) = v.iter().position(|&x| x == eid) { v.remove(i); } else { v.push(eid); }
         });
     };
     let compare_selected = move |_| {
-        let mut ids = selected.get_untracked();
+        let sel = selected_entries.get_untracked();
+        let mut ids: Vec<u64> = entries
+            .get_untracked()
+            .iter()
+            .filter(|e| sel.contains(&e.id))
+            .map(|e| e.product_id)
+            .collect();
         ids.sort_unstable();
         ids.dedup();
         if !ids.is_empty() {
-            selected.set(Vec::new());
+            selected_entries.set(Vec::new());
             nav.set(Nav::Compare(ids));
         }
+    };
+    let delete_selected = move |_| {
+        let sel = selected_entries.get_untracked();
+        if sel.is_empty() {
+            return;
+        }
+        for eid in &sel {
+            let mut removed_pid: Option<u64> = None;
+            entries.update(|v| {
+                if let Some(pos) = v.iter().position(|e| e.id == *eid) {
+                    removed_pid = Some(v[pos].product_id);
+                    v.remove(pos);
+                }
+            });
+            if let Some(pid) = removed_pid {
+                let still_used = entries.get_untracked().iter().any(|e| e.product_id == pid);
+                if !still_used {
+                    products.update(|v| v.retain(|p| p.id != pid));
+                }
+            }
+        }
+        selected_entries.set(Vec::new());
     };
 
     // ---- add/edit price form (collapsed by default)
@@ -656,7 +732,15 @@ fn StoreView(
             .unwrap_or_else(|| {
                 let id = next_id(products.get_untracked().iter().map(|p| p.id));
                 let category = current_cat();
-                products.update(|v| v.push(Product { id, name: name.clone(), category }));
+                products.update(|v| v.push(Product {
+                    id,
+                    name: name.clone(),
+                    category,
+                    barcode: None,
+                    grade: None,
+                    bad_ingredients: Vec::new(),
+                    good_ingredients: Vec::new(),
+                }));
                 id
             });
 
@@ -805,10 +889,10 @@ fn StoreView(
                             </select>
                         </label>
                         <label class="field">
-                            <span class="lbl">"Price (total)"</span>
+                            <span class="lbl">"Price for this quantity"</span>
                             <input
                                 inputmode="decimal"
-                                placeholder="5.00"
+                                placeholder="7.64"
                                 prop:value=move || new_price.get()
                                 on:input=move |ev| new_price.set(event_target_value(&ev))
                             />
@@ -817,7 +901,7 @@ fn StoreView(
 
                     <div class="grid2">
                         <label class="field">
-                            <span class="lbl">"Quantity"</span>
+                            <span class="lbl">"Quantity (how many / how much)"</span>
                             <div class="stepper">
                                 <button class="step-btn" type="button" on:click=move |_| {
                                     let v = domain::parse_number(&new_qty.get_untracked()).unwrap_or(1.0);
@@ -826,7 +910,7 @@ fn StoreView(
                                 }>"−"</button>
                                 <input
                                     inputmode="decimal"
-                                    placeholder=move || if new_qtyunit.get() == "pc" { "1" } else { "1.5" }
+                                    placeholder=move || if new_qtyunit.get() == "pc" { "1" } else { "500" }
                                     prop:value=move || new_qty.get()
                                     on:input=move |ev| new_qty.set(event_target_value(&ev))
                                 />
@@ -840,11 +924,11 @@ fn StoreView(
                         <label class="field">
                             <span class="lbl">"Unit"</span>
                             <select
-                                class="unit-select"
+                                class="unit-select wide"
                                 prop:value=move || new_qtyunit.get()
                                 on:change=move |ev| new_qtyunit.set(event_target_value(&ev))
                             >
-                                <option value="pc">"pieces"</option>
+                                <option value="pc">"items/pieces"</option>
                                 <option value="g">"grams (total)"</option>
                                 <option value="kg">"kg (total)"</option>
                                 <option value="l">"liters (total)"</option>
@@ -852,14 +936,17 @@ fn StoreView(
                             </select>
                         </label>
                     </div>
+                    <Show when=move || new_qtyunit.get() == "pc">
+                        <div class="hint" style="margin-top:6px;">"For items sold by piece: set quantity = number of items and weight per item (e.g. 2 pots × 500g). Or switch unit to grams and enter the total (e.g. 1000g)."</div>
+                    </Show>
 
                     <Show when=move || new_qtyunit.get() == "pc">
                         <div class="grid2">
                             <label class="field">
-                                <span class="lbl">"1 unit (weight)"</span>
+                                <span class="lbl">"Weight per item"</span>
                                 <input
                                     inputmode="decimal"
-                                    placeholder="90"
+                                    placeholder="500"
                                     prop:value=move || new_weight.get()
                                     on:input=move |ev| new_weight.set(event_target_value(&ev))
                                 />
@@ -867,7 +954,7 @@ fn StoreView(
                             <label class="field">
                                 <span class="lbl">"Weight unit"</span>
                                 <select
-                                    class="unit-select"
+                                    class="unit-select wide"
                                     prop:value=move || new_wunit.get()
                                     on:change=move |ev| new_wunit.set(event_target_value(&ev))
                                 >
@@ -880,30 +967,28 @@ fn StoreView(
                         </div>
                     </Show>
 
-                    <div class="grid2">
-                        <label class="field">
-                            <span class="lbl">"Currency"</span>
-                            <select
-                                class="unit-select wide"
-                                prop:value=move || new_cur.get()
-                                on:change=move |ev| new_cur.set(event_target_value(&ev))
-                            >
-                                {move || {
-                                    currencies.get().iter().map(|c: &Currency| {
-                                        view! { <option value=c.code.clone()>{c.symbol.clone()}" "{c.code.clone()}</option> }
-                                    }).collect_view()
-                                }}
-                            </select>
-                        </label>
-                        <label class="field">
-                            <span class="lbl">"Found on"</span>
-                            <input
-                                type="date"
-                                prop:value=move || new_date.get()
-                                on:input=move |ev| new_date.set(event_target_value(&ev))
-                            />
-                        </label>
-                    </div>
+                    <label class="field">
+                        <span class="lbl">"Currency"</span>
+                        <select
+                            class="unit-select wide"
+                            prop:value=move || new_cur.get()
+                            on:change=move |ev| new_cur.set(event_target_value(&ev))
+                        >
+                            {move || {
+                                currencies.get().iter().map(|c: &Currency| {
+                                    view! { <option value=c.code.clone()>{c.symbol.clone()}" "{c.code.clone()}</option> }
+                                }).collect_view()
+                            }}
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span class="lbl">"Found on"</span>
+                        <input
+                            type="date"
+                            prop:value=move || new_date.get()
+                            on:input=move |ev| new_date.set(event_target_value(&ev))
+                        />
+                    </label>
 
                     <div class="row meta-row">
                         <label class="check">
@@ -950,7 +1035,6 @@ fn StoreView(
                 children={move |row: (PriceEntry, String, String)| {
                     let entry = row.0;
                     let eid = entry.id;
-                    let pid = entry.product_id;
                     let quote = domain::entry_quote(&entry);
                     let emoji = domain::category_emoji(&row.2);
                     let cur = if entry.currency.is_empty() {
@@ -963,45 +1047,47 @@ fn StoreView(
                     let cur_list = currencies.get_untracked();
 
                     let rate_to_main = if cur == main_code { 1.0 } else { currency_rate(&cur_list, &cur) };
-                    let kg = quote.per_kg.is_some();
-                    let lit = !kg && quote.per_l.is_some();
-                    let metric = if kg { quote.per_kg } else if lit { quote.per_l } else { quote.per_unit };
-                    let unit_str = if kg { "/kg" } else if lit { "/L" } else { "each" };
 
                     let main_sym = symbol_of(&cur_list, &main_code);
-                    let primary_txt = metric
-                        .map(|m| format!("{}{} {}", main_sym, fmt_price(m * rate_to_main), unit_str))
-                        .unwrap_or_else(|| "—".to_string());
+                    let entry_sym = symbol_of(&cur_list, &cur);
 
-                    let secondary_txt = if !second.is_empty() && second != main_code {
-                        let r2 = currency_rate(&cur_list, &second);
-                        if r2 > 0.0 {
-                            metric.map(|m| format!("{}{} {}", symbol_of(&cur_list, &second), fmt_price(m * rate_to_main / r2), unit_str))
-                        } else { None }
-                    } else { None };
+                    // Exact quantity label, e.g. "500g", "1.5L", "3 pc"
+                    let qty_num = domain::parse_number(&entry.quantity).unwrap_or(1.0);
+                    let qty_label = match entry.qty_unit.as_str() {
+                        "g" => format!("{}g", entry.quantity.trim()),
+                        "kg" => format!("{}kg", entry.quantity.trim()),
+                        "l" => format!("{}L", entry.quantity.trim()),
+                        "ml" => format!("{}mL", entry.quantity.trim()),
+                        _ => {
+                            if (qty_num - 1.0).abs() < 1e-9 {
+                                "1 pc".to_string()
+                            } else {
+                                format!("{} pc", entry.quantity.trim())
+                            }
+                        }
+                    };
+                    // Card: exact quantity and price, e.g. "500g · $7.64"
+                    let paid_txt = format!("{} · {}{}", qty_label, entry_sym, entry.price.trim());
 
-                    // Extra: price per volume/weight details (e.g. per 100g)
+                    // Details (simplified): date \ price currency1 per kg|L|each \ price currency2 per kg|L|each
                     let mut details: Vec<String> = Vec::new();
+                    if !entry.date.trim().is_empty() {
+                        details.push(entry.date.trim().to_string());
+                    }
                     if let Some(k) = quote.per_kg {
-                        let per100g = k / 10.0;
-                        details.push(format!("{}{} /100g", main_sym, fmt_price(per100g * rate_to_main)));
                         details.push(format!("{}{} /kg", main_sym, fmt_price(k * rate_to_main)));
                         if !second.is_empty() && second != main_code {
                             let r2 = currency_rate(&cur_list, &second);
                             if r2 > 0.0 {
-                                let s2 = symbol_of(&cur_list, &second);
-                                details.push(format!("{}{} /kg", s2, fmt_price(k * rate_to_main / r2)));
+                                details.push(format!("{}{} /kg", symbol_of(&cur_list, &second), fmt_price(k * rate_to_main / r2)));
                             }
                         }
                     } else if let Some(v) = quote.per_l {
-                        let per100ml = v / 10.0;
-                        details.push(format!("{}{} /100mL", main_sym, fmt_price(per100ml * rate_to_main)));
                         details.push(format!("{}{} /L", main_sym, fmt_price(v * rate_to_main)));
                         if !second.is_empty() && second != main_code {
                             let r2 = currency_rate(&cur_list, &second);
                             if r2 > 0.0 {
-                                let s2 = symbol_of(&cur_list, &second);
-                                details.push(format!("{}{} /L", s2, fmt_price(v * rate_to_main / r2)));
+                                details.push(format!("{}{} /L", symbol_of(&cur_list, &second), fmt_price(v * rate_to_main / r2)));
                             }
                         }
                     } else if let Some(u) = quote.per_unit {
@@ -1013,20 +1099,58 @@ fn StoreView(
                             }
                         }
                     }
-                    let detail_txt = details.join(" · ");
+                    let (detail_date, detail_prices) = if !entry.date.trim().is_empty() {
+                        (entry.date.trim().to_string(), if details.len() > 1 { details[1..].join(" · ") } else { String::new() })
+                    } else {
+                        (String::new(), details.join(" · "))
+                    };
+
+                    // History: other/previous prices for same product in this store
+                    let mut history: Vec<String> = Vec::new();
+                    let mut hist_entries: Vec<PriceEntry> = entries.get_untracked().into_iter()
+                        .filter(|e| e.store_id == entry.store_id && e.product_id == entry.product_id)
+                        .collect();
+                    hist_entries.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
+                    for h in hist_entries.iter().skip(1).take(5) {
+                        let hs = symbol_of(&cur_list, if h.currency.is_empty() { &main_code } else { &h.currency });
+                        let hqty = match h.qty_unit.as_str() {
+                            "g" => format!("{}g", h.quantity.trim()),
+                            "kg" => format!("{}kg", h.quantity.trim()),
+                            "l" => format!("{}L", h.quantity.trim()),
+                            "ml" => format!("{}mL", h.quantity.trim()),
+                            _ => format!("{} pc", h.quantity.trim()),
+                        };
+                        history.push(format!("{} — {} · {}{}", h.date, hqty, hs, h.price.trim()));
+                    }
+                    let history_txt = history.join("\n");
 
                     let badge_txt = if entry.promo {
                         let d = entry.promo_deal.trim();
-                        if d.is_empty() { "PROMO".to_string() } else { d.to_uppercase() }
-                    } else { String::new() };
+                        if d.is_empty() {
+                            "PROMO".to_string()
+                        } else if let Some(pct) = d.split_whitespace().find(|t| t.contains('%')) {
+                            let p = pct.trim_matches(|c: char| !c.is_ascii_digit() && c != '%' && c != '.');
+                            if p.contains('%') {
+                                let num = p.trim_end_matches('%').trim_start_matches('-');
+                                if num.is_empty() { "-%".to_string() } else { format!("-{}%", num) }
+                            } else {
+                                d.to_uppercase()
+                            }
+                        } else {
+                            d.to_uppercase()
+                        }
+                    } else {
+                        String::new()
+                    };
 
                     let entry_sv = StoredValue::new(entry.clone());
-                    let detail_sv = StoredValue::new(detail_txt.clone());
+                    let detail_date_sv = StoredValue::new(detail_date.clone());
+                    let detail_prices_sv = StoredValue::new(detail_prices.clone());
+                    let history_sv = StoredValue::new(history_txt.clone());
                     let badge_sv = StoredValue::new(badge_txt.clone());
-                    let primary_sv = StoredValue::new(primary_txt.clone());
-                    let secondary_sv = StoredValue::new(secondary_txt.clone());
+                    let paid_sv = StoredValue::new(paid_txt.clone());
                     let name_sv = StoredValue::new(row.1.clone());
-                    let is_sel = move || selected.get().contains(&pid);
+                    let is_sel = move || selected_entries.get().contains(&eid);
                     let is_menu = move || menu_entry.get() == Some(eid);
                     let is_copying = move || copy_entry_id.get() == Some(eid);
 
@@ -1038,28 +1162,40 @@ fn StoreView(
                             }>
                                 <button
                                     class=move || if is_sel() { "row-check checked" } else { "row-check" }
-                                    title="Select to compare"
-                                    on:click=move |ev| { ev.stop_propagation(); toggle(pid); }
+                                    title="Select"
+                                    on:click=move |ev| { ev.stop_propagation(); toggle_entry(eid); }
                                 >{move || if is_sel() { "✓" } else { "" }}</button>
                                 <div class="e-info">
                                     <div class="e-name">{emoji}" "{move || name_sv.get_value()}</div>
-                                    <div class="e-meta">
-                                        {move || entry_sv.get_value().date.clone()}
-                                        {move || {
-                                            let e = entry_sv.get_value();
-                                            if e.promo { Some(view! { <span class="promo-badge">{badge_sv.get_value()}</span> }) } else { None }
-                                        }}
-                                    </div>
                                 </div>
-                                <div class="e-prices">
-                                    <div class="e-sub">{move || primary_sv.get_value()}</div>
-                                    {move || secondary_sv.get_value().map(|t| view! { <div class="e-sec">{t}</div> })}
+                                <div class="e-right">
+                                    <div class="e-paid">{move || paid_sv.get_value()}</div>
+                                    {move || {
+                                        let e = entry_sv.get_value();
+                                        if e.promo { Some(view! { <span class="promo-badge">{badge_sv.get_value()}</span> }) } else { None }
+                                    }}
+                                    {move || {
+                                        let pid = entry_sv.get_value().product_id;
+                                        products.get().iter().find(|p| p.id == pid).and_then(|p| p.grade).map(|g| {
+                                            let cls = if g >= 75 { "rate-badge good" } else if g >= 40 { "rate-badge mid" } else { "rate-badge bad" };
+                                            view! { <span class=cls>{format!("{}/100", g)}</span> }
+                                        })
+                                    }}
                                 </div>
                             </div>
 
                             <Show when=is_menu>
                                 <div class="entry-menu">
-                                    <div class="entry-detail">{move || detail_sv.get_value()}</div>
+                                    <div class="entry-detail">
+                                        <span class="ed-date">{move || detail_date_sv.get_value()}</span>
+                                        <span class="ed-prices">{move || detail_prices_sv.get_value()}</span>
+                                    </div>
+                                    {move || {
+                                        let h = history_sv.get_value();
+                                        if h.is_empty() { None } else {
+                                            Some(view! { <div class="entry-history"><div class="eh-title">"Price history"</div><pre class="eh-body">{h}</pre></div> })
+                                        }
+                                    }}
                                     <div class="entry-actions">
                                         <button class="menu-item" on:click=move |_| {
                                             let e = entry_sv.get_value();
@@ -1076,18 +1212,14 @@ fn StoreView(
                                             new_cur.set(if e.currency.is_empty() { settings.get_untracked().main_currency } else { e.currency.clone() });
                                             new_promo.set(e.promo);
                                             new_deal.set(e.promo_deal.clone());
-                                            new_date.set(e.date.clone());
-                                            editing_id.set(Some(eid));
+                                            new_date.set(today_iso());
+                                            editing_id.set(None); // save as new entry to keep history
                                             form_open.set(true);
                                             menu_entry.set(None);
-                                        }>"✏️ Edit price"</button>
+                                        }>"＋ New price"</button>
                                         <button class="menu-item" on:click=move |_| {
                                             copy_entry_id.update(|c| *c = if *c == Some(eid) { None } else { Some(eid) });
                                         }>"📋 Copy to another store"</button>
-                                        <button class="menu-item" on:click=move |_| {
-                                            menu_entry.set(None);
-                                            delete_entry(eid);
-                                        }>"🗑 Delete"</button>
                                     </div>
                                     <Show when=is_copying>
                                         <div class="copy-list">
@@ -1121,10 +1253,15 @@ fn StoreView(
                 }}
             />
 
-            <Show when=move || !selected.get().is_empty()>
-                <button class="add-btn compare" on:click=compare_selected>
-                    "⚖️ Quick compare selected (" {move || selected.get().len()} ")"
-                </button>
+            <Show when=move || !selected_entries.get().is_empty()>
+                <div class="row" style="gap:8px;">
+                    <button class="add-btn compare" style="flex:1; margin-top:8px;" on:click=compare_selected>
+                        "⚖️ Compare (" {move || selected_entries.get().len()} ")"
+                    </button>
+                    <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; color:#fff; border-color:#844;" on:click=delete_selected>
+                        "🗑 Delete (" {move || selected_entries.get().len()} ")"
+                    </button>
+                </div>
             </Show>
 
         </div>
@@ -1209,7 +1346,7 @@ fn ProductsView(
 
             <input
                 class="search-input"
-                placeholder="Search the database (fruits, vegetables, bottles…)"
+                placeholder="Search products (fruits, vegetables, drinks, frozen, processed…)"
                 prop:value=move || search.get()
                 on:input=move |ev| search.set(event_target_value(&ev))
             />
@@ -1460,7 +1597,7 @@ fn ComparisonList(
                             }}
                             {move || {
                                 let data = if r.best {
-                                    Some(("rank-delta winner", "★ best".to_string()))
+                                    Some(("rank-delta winner", "★".to_string()))
                                 } else if r.metric.is_none() {
                                     Some(("rank-delta", "add weight or price".to_string()))
                                 } else {
@@ -1649,6 +1786,345 @@ fn CurrencyRow(
     }
 }
 
+// ---------------------------------------------------------------- scan view
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct ScanResult {
+    barcode: String,
+    name: String,
+    brand: String,
+    quantity: String,
+    grade: u8,
+    nutriscore: String,
+    nova: String,
+    good: Vec<String>,
+    bad: Vec<String>,
+}
+
+fn compute_grade(nutriscore: &str, nova: Option<i64>, additives_n: usize, eco: &str) -> (u8, Vec<String>, Vec<String>) {
+    let mut score: i32 = match nutriscore.to_lowercase().as_str() {
+        "a" => 90,
+        "b" => 75,
+        "c" => 55,
+        "d" => 35,
+        "e" => 15,
+        _ => 50,
+    };
+    let mut good = Vec::new();
+    let mut bad = Vec::new();
+
+    match nutriscore.to_lowercase().as_str() {
+        "a" => good.push("Nutri-Score A".to_string()),
+        "b" => good.push("Nutri-Score B".to_string()),
+        "d" => bad.push("Nutri-Score D".to_string()),
+        "e" => bad.push("Nutri-Score E".to_string()),
+        _ => {}
+    }
+    if let Some(n) = nova {
+        match n {
+            1 => { score += 5; good.push("NOVA 1 (unprocessed)".to_string()); }
+            2 => { good.push("NOVA 2 (processed ingredients)".to_string()); }
+            3 => { score -= 5; bad.push("NOVA 3 (processed)".to_string()); }
+            4 => { score -= 12; bad.push("NOVA 4 (ultra-processed)".to_string()); }
+            _ => {}
+        }
+    }
+    if additives_n == 0 {
+        score += 3;
+        good.push("No additives reported".to_string());
+    } else if additives_n <= 2 {
+        score -= 4;
+        bad.push(format!("{} additive(s)", additives_n));
+    } else {
+        score -= 10;
+        bad.push(format!("{} additives", additives_n));
+    }
+    match eco.to_lowercase().as_str() {
+        "a" => { score += 3; good.push("Eco-Score A".to_string()); }
+        "b" => { score += 1; good.push("Eco-Score B".to_string()); }
+        "e" => { score -= 3; bad.push("Eco-Score E".to_string()); }
+        _ => {}
+    }
+
+    score = score.clamp(0, 100);
+    (score as u8, good, bad)
+}
+
+#[component]
+fn ScanView(
+    stores: RwSignal<Vec<Store>>,
+    products: RwSignal<Vec<Product>>,
+    entries: RwSignal<Vec<PriceEntry>>,
+    nav: RwSignal<Nav>,
+    settings: RwSignal<Settings>,
+) -> impl IntoView {
+    let _ = nav;
+    let barcode = RwSignal::new(String::new());
+    let status = RwSignal::new(String::new());
+    let result: RwSignal<Option<ScanResult>> = RwSignal::new(None);
+    let selected_store: RwSignal<String> = RwSignal::new(String::new());
+    let add_price = RwSignal::new(String::new());
+    let add_qty = RwSignal::new("1".to_string());
+    let scanning = RwSignal::new(false);
+
+    // Keep scan callbacks alive while scanning.
+    let scan_result_cb = StoredValue::new_local(None::<Closure<dyn FnMut(String)>>);
+    let scan_error_cb = StoredValue::new_local(None::<Closure<dyn FnMut(String)>>);
+
+    let start_scan = move |_| {
+        if scanning.get_untracked() {
+            return;
+        }
+        status.set("Starting camera…".to_string());
+        let barcode = barcode.clone();
+        let status = status.clone();
+        let scanning = scanning.clone();
+
+        let on_res = Closure::wrap(Box::new(move |code: String| {
+            barcode.set(code.clone());
+            status.set(format!("Scanned: {}. Tap Look up.", code));
+            scanning.set(false);
+            // Trigger lookup automatically by setting status; user can tap Look up. Auto-lookup:
+            // (can't easily call lookup closure here without clone complexity; keep simple)
+        }) as Box<dyn FnMut(String)>);
+        let on_err = Closure::wrap(Box::new(move |msg: String| {
+            status.set(msg);
+            scanning.set(false);
+        }) as Box<dyn FnMut(String)>);
+
+        let on_res_fn = on_res.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        let on_err_fn = on_err.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        let _promise = js_start_barcode_scan(&on_res_fn, &on_err_fn);
+        // startBarcodeScan returns a Promise<bool>; we optimistically show scanning UI
+        // and let the callbacks update state (success -> scanning false, error -> scanning false).
+        scanning.set(true);
+        scan_result_cb.set_value(Some(on_res));
+        scan_error_cb.set_value(Some(on_err));
+    };
+
+    let stop_scan = move |_| {
+        js_stop_barcode_scan();
+        scanning.set(false);
+        status.set("Camera stopped".to_string());
+        scan_result_cb.set_value(None);
+        scan_error_cb.set_value(None);
+    };
+
+    let lookup = move |_| {
+        let code = barcode.get_untracked().trim().to_string();
+        if code.is_empty() {
+            status.set("Enter a barcode number".to_string());
+            return;
+        }
+        status.set("Looking up product…".to_string());
+        result.set(None);
+        let status = status.clone();
+        let result = result.clone();
+        spawn_local(async move {
+            let url = format!(
+                "https://world.openfoodfacts.org/api/v2/product/{}.json?fields=product_name,brands,nutriscore_grade,nova_group,additives_tags,ingredients_analysis_tags,ingredients_text,ecoscore_grade,quantity",
+                code
+            );
+            match gloo_net::http::Request::get(&url).send().await {
+                Ok(resp) => match resp.json::<serde_json::Value>().await {
+                    Ok(v) => {
+                        let found = v.get("status").and_then(|s| s.as_i64()).unwrap_or(0) == 1;
+                        if !found {
+                            status.set("Product not found on Open Food Facts. You can add it manually from a store.".to_string());
+                            return;
+                        }
+                        let p = v.get("product").cloned().unwrap_or_default();
+                        let name = p.get("product_name").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
+                        let brand = p.get("brands").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
+                        let qty = p.get("quantity").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
+                        let nutri = p.get("nutriscore_grade").and_then(|x| x.as_str()).unwrap_or("unknown").to_string();
+                        let nova = p.get("nova_group").and_then(|x| x.as_i64());
+                        let eco = p.get("ecoscore_grade").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                        let additives_n = p.get("additives_tags").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0);
+                        let (grade, mut good, mut bad) = compute_grade(&nutri, nova, additives_n, &eco);
+                        if let Some(tags) = p.get("ingredients_analysis_tags").and_then(|x| x.as_array()) {
+                            for t in tags.iter().filter_map(|x| x.as_str()) {
+                                if t.contains("palm-oil") {
+                                    if t.contains("palm-oil-free") { good.push("Palm oil free".to_string()); }
+                                    else if !t.contains("may-contain") { bad.push("Contains palm oil".to_string()); }
+                                }
+                                if t.contains("vegan") && !t.contains("non-vegan") { good.push("Vegan".to_string()); }
+                                if t.contains("vegetarian") && !t.contains("non-vegetarian") { good.push("Vegetarian".to_string()); }
+                            }
+                        }
+                        if let Some(ing) = p.get("ingredients_text").and_then(|x| x.as_str()) {
+                            let ing = ing.trim();
+                            if !ing.is_empty() && ing.len() < 180 {
+                                good.push(format!("Ingredients: {}", ing));
+                            } else if !ing.is_empty() {
+                                let mut end = 160.min(ing.len());
+                                while end > 0 && !ing.is_char_boundary(end) { end -= 1; }
+                                good.push(format!("Ingredients: {}…", &ing[..end]));
+                            }
+                        }
+                        let display = if name.is_empty() { format!("Product {}", code) } else { name.clone() };
+                        result.set(Some(ScanResult {
+                            barcode: code.clone(),
+                            name: display,
+                            brand,
+                            quantity: qty,
+                            grade,
+                            nutriscore: nutri.to_uppercase(),
+                            nova: nova.map(|n| n.to_string()).unwrap_or_default(),
+                            good,
+                            bad,
+                        }));
+                        status.set("Found. Review and add to a store.".to_string());
+                    }
+                    Err(_) => status.set("Could not read product data".to_string()),
+                },
+                Err(_) => status.set("Network error while fetching product".to_string()),
+            }
+        });
+    };
+
+    let add_to_store = move |_| {
+        let Some(res) = result.get_untracked() else { return; };
+        let sid: u64 = match selected_store.get_untracked().parse() {
+            Ok(v) => v,
+            Err(_) => { status.set("Pick a store first".to_string()); return; }
+        };
+        // find or create product by barcode
+        let pid = products.get_untracked().iter()
+            .find(|p| p.barcode.as_deref() == Some(res.barcode.as_str()))
+            .map(|p| p.id)
+            .unwrap_or_else(|| {
+                let id = next_id(products.get_untracked().iter().map(|p| p.id));
+                let category = domain::guess_category(&res.name).to_string();
+                products.update(|v| v.push(Product {
+                    id,
+                    name: res.name.clone(),
+                    category,
+                    barcode: Some(res.barcode.clone()),
+                    grade: Some(res.grade),
+                    bad_ingredients: res.bad.clone(),
+                    good_ingredients: res.good.clone(),
+                }));
+                id
+            });
+        // update grade/info on existing matched product
+        products.update(|v| {
+            if let Some(p) = v.iter_mut().find(|p| p.id == pid) {
+                p.barcode = Some(res.barcode.clone());
+                p.grade = Some(res.grade);
+                p.bad_ingredients = res.bad.clone();
+                p.good_ingredients = res.good.clone();
+                if p.name.trim().is_empty() { p.name = res.name.clone(); }
+            }
+        });
+        // create a price entry in the selected store
+        let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
+        let mut entry = PriceEntry::new(eid, sid, pid);
+        let price = add_price.get_untracked();
+        entry.price = if price.trim().is_empty() { "0".to_string() } else { price };
+        entry.quantity = add_qty.get_untracked();
+        entry.qty_unit = "pc".to_string();
+        entry.currency = settings.get_untracked().main_currency;
+        entry.date = today_iso();
+        entries.update(|v| v.push(entry));
+        status.set("Added to store ✓".to_string());
+    };
+
+    view! {
+        <div class="page">
+            <header><h1>{move || format!("📷 {}", tr(&settings.get().language, "scan_title"))}</h1></header>
+            <div class="hint">"Enter a barcode number to look up a product (Open Food Facts). You’ll see a grade /100, good/bad ingredients, and can add it to a store."</div>
+
+            <div class="card">
+                <label class="field">
+                    <span class="lbl">"Barcode (EAN/UPC)"</span>
+                    <input
+                        inputmode="numeric"
+                        placeholder="e.g. 3017620422003"
+                        prop:value=move || barcode.get()
+                        on:input=move |ev| barcode.set(event_target_value(&ev))
+                    />
+                </label>
+                <div class="row" style="gap:8px;">
+                    <button class="add-btn" style="flex:1; margin-top:8px;" on:click=lookup>"Look up"</button>
+                    <Show
+                        when=move || scanning.get()
+                        fallback=move || view! { <button class="add-btn" style="flex:1; margin-top:8px;" on:click=start_scan>"📷 Use camera"</button> }
+                    >
+                        <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; border-color:#844;" on:click=stop_scan>"Stop camera"</button>
+                    </Show>
+                </div>
+                <Show when=move || scanning.get()>
+                    <div id="scan-video-host" style="margin-top:10px;"></div>
+                    <div class="hint" style="margin-top:8px;">"Point the camera at a barcode. If it doesn’t scan, type the number above."</div>
+                </Show>
+            </div>
+
+            <Show when=move || !status.get().is_empty()>
+                <div class="hint">{move || status.get()}</div>
+            </Show>
+
+            <Show when=move || result.get().is_some()>
+                {move || result.get().map(|r| {
+                    let g = r.grade;
+                    let cls = if g >= 75 { "grade good" } else if g >= 40 { "grade mid" } else { "grade bad" };
+                    let name = r.name.clone();
+                    let sub = if r.brand.is_empty() { r.quantity.clone() } else { format!("{} · {}", r.brand, r.quantity) };
+                    let meta = format!("Nutri-Score {} · NOVA {}", r.nutriscore, if r.nova.is_empty() { "?".into() } else { r.nova.clone() });
+                    let good = r.good.clone();
+                    let bad = r.bad.clone();
+                    let has_good = !good.is_empty();
+                    let has_bad = !bad.is_empty();
+                    view! {
+                        <div class="card">
+                            <div class="row" style="justify-content:space-between; align-items:center; gap:12px;">
+                                <div>
+                                    <div class="s-name">{name}</div>
+                                    <div class="s-sub">{sub}</div>
+                                    <div class="s-sub">{meta}</div>
+                                </div>
+                                <div class=cls>{format!("{}/100", g)}</div>
+                            </div>
+                            <Show when=move || has_good>
+                                <div style="margin-top:10px;">
+                                    <div class="eh-title">"Good / positives"</div>
+                                    <ul class="ing-list good">{good.iter().map(|x| view!{ <li>{x.clone()}</li> }).collect_view()}</ul>
+                                </div>
+                            </Show>
+                            <Show when=move || has_bad>
+                                <div style="margin-top:8px;">
+                                    <div class="eh-title">"Bad / watch out"</div>
+                                    <ul class="ing-list bad">{bad.iter().map(|x| view!{ <li>{x.clone()}</li> }).collect_view()}</ul>
+                                </div>
+                            </Show>
+
+                            <h2 class="section" style="margin-top:12px;">"Add to a store"</h2>
+                            <label class="field">
+                                <span class="lbl">"Store"</span>
+                                <select class="unit-select wide" prop:value=move || selected_store.get() on:change=move |ev| selected_store.set(event_target_value(&ev))>
+                                    <option value="">"Select a store…"</option>
+                                    {move || stores.get().iter().map(|s| view!{ <option value=s.id.to_string()>{s.name.clone()}</option> }).collect_view()}
+                                </select>
+                            </label>
+                            <div class="grid2">
+                                <label class="field">
+                                    <span class="lbl">"Price (optional)"</span>
+                                    <input inputmode="decimal" placeholder="0.00" prop:value=move || add_price.get() on:input=move |ev| add_price.set(event_target_value(&ev)) />
+                                </label>
+                                <label class="field">
+                                    <span class="lbl">"Quantity"</span>
+                                    <input inputmode="decimal" placeholder="1" prop:value=move || add_qty.get() on:input=move |ev| add_qty.set(event_target_value(&ev)) />
+                                </label>
+                            </div>
+                            <button class="add-btn" on:click=add_to_store>"Add product to store"</button>
+                        </div>
+                    }
+                })}
+            </Show>
+        </div>
+    }
+}
+
 // ---------------------------------------------------------------- settings view
 
 #[component]
@@ -1728,7 +2204,24 @@ fn SettingsView(
 
     view! {
         <div class="page">
-            <header><h1>"⚙️ Settings"</h1></header>
+            <header><h1>{move || format!("⚙️ {}", tr(&settings.get().language, "settings"))}</h1></header>
+
+            <h2 class="section">{move || tr(&settings.get().language, "language").to_string()}</h2>
+            <label class="field">
+                <span class="lbl">{move || tr(&settings.get().language, "app_language").to_string()}</span>
+                <select
+                    class="unit-select wide"
+                    prop:value=move || settings.get().language.clone()
+                    on:change=move |ev| {
+                        settings.update(|s| s.language = event_target_value(&ev));
+                    }
+                >
+                    <option value="en">"English"</option>
+                    <option value="fr">"Français"</option>
+                    <option value="es">"Español"</option>
+                    <option value="zh">"中文"</option>
+                </select>
+            </label>
 
             <h2 class="section">"Main currency"</h2>
             <div class="hint">
@@ -1948,9 +2441,10 @@ fn App() -> impl IntoView {
                         <CompareView ids stores products entries currencies settings nav />
                     }.into_any()
                 }
+                Nav::Scan => view! { <ScanView stores products entries nav settings /> }.into_any(),
                 Nav::Settings => view! { <SettingsView settings currencies stores products entries /> }.into_any(),
             }}
-            <TabBar nav />
+            <TabBar nav settings />
         </main>
     }
 }

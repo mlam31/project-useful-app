@@ -1,12 +1,12 @@
 // Price Compare service worker — network-first with offline fallback.
-const CACHE = "price-compare-v1";
+const CACHE = "price-compare-v2";
 const PRECACHE = [
-    "/",
-    "/index.html",
-    "/manifest.json",
-    "/icon-180.png",
-    "/icon-192.png",
-    "/icon-512.png",
+    "./",
+    "./index.html",
+    "./manifest.json",
+    "./icon-180.png",
+    "./icon-192.png",
+    "./icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -27,7 +27,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
     if (event.request.method !== "GET") return;
-    if (url.origin !== location.origin) return; // never touch cross-origin (e.g. geocoding)
+    if (url.origin !== location.origin) return; // never touch cross-origin (e.g. APIs, geocoding)
 
     event.respondWith(
         fetch(event.request)
@@ -36,6 +36,6 @@ self.addEventListener("fetch", (event) => {
                 caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
                 return response;
             })
-            .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+            .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./")))
     );
 });

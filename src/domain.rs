@@ -12,13 +12,26 @@ pub struct Store {
     pub address: Option<String>,
 }
 
-/// A product in your database (fruit, vegetable, bottle...).
+/// A product in your database (fruit, vegetable, frozen, drink, processed, other).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Product {
     pub id: u64,
     pub name: String,
-    /// One of: "fruit", "vegetable", "bottle", "other".
+    /// One of: "fruit", "vegetable", "frozen", "drink", "processed", "other"
+    /// (legacy "bottle" is treated as "drink").
     pub category: String,
+    /// Optional barcode (EAN/UPC) from scan.
+    #[serde(default)]
+    pub barcode: Option<String>,
+    /// Optional quality score 0-100 (e.g. estimated from Open Food Facts).
+    #[serde(default)]
+    pub grade: Option<u8>,
+    /// Short notes about concerning ingredients/additives (from scan).
+    #[serde(default)]
+    pub bad_ingredients: Vec<String>,
+    /// Short notes about positive aspects (from scan).
+    #[serde(default)]
+    pub good_ingredients: Vec<String>,
 }
 
 /// One price you recorded: a product, at a store, on a date.
@@ -88,6 +101,13 @@ pub struct Settings {
     /// alongside the main one (e.g. see EUR while shopping in AUD).
     #[serde(default)]
     pub second_currency: Option<String>,
+    /// UI language: "en", "fr", "es", "zh".
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for Settings {
@@ -95,6 +115,7 @@ impl Default for Settings {
         Self {
             main_currency: "EUR".to_string(),
             second_currency: None,
+            language: "en".to_string(),
         }
     }
 }
@@ -135,7 +156,7 @@ pub fn guess_category(name: &str) -> &'static str {
     const FRUIT: &[&str] = &[
         "apple", "banana", "orange", "kiwi", "grape", "pear", "mango", "berry", "strawberr",
         "raspberry", "blueberr", "peach", "nectarine", "plum", "melon", "watermelon", "lemon",
-        "lime", "pineapple", "cherry", "fig", "apricot", "papaya", "passion", "coconut",
+        "lime", "pineapple", "cherry", "fig", "apricot", "papaya", "passion", "coconut", "avocado",
     ];
     const VEG: &[&str] = &[
         "cucumber", "tomato", "potato", "onion", "carrot", "lettuce", "salad", "spinach",
@@ -144,12 +165,25 @@ pub fn guess_category(name: &str) -> &'static str {
         "squash", "corn", "beet", "radish", "asparagus", "leek", "fennel", "ginger", "herb",
         "basil", "mint", "coriander", "parsley",
     ];
-    const BOTTLE: &[&str] = &[
-        "bottle", "water", "soda", "cola", "juice", "milk", "beer", "wine", "drink", "tea",
-        "coffee", "sparkling",
+    const FROZEN: &[&str] = &[
+        "frozen", "ice cream", "gelato", "sorbet", "freezer",
     ];
-    if BOTTLE.iter().any(|k| n.contains(k)) {
-        "bottle"
+    const DRINK: &[&str] = &[
+        "bottle", "water", "soda", "cola", "juice", "milk", "beer", "wine", "drink", "tea",
+        "coffee", "sparkling", "yoghurt drink", "smoothie",
+    ];
+    const PROCESSED: &[&str] = &[
+        "kimchi", "canned", "can of", "sauce", "pasta", "noodle", "rice", "cereal", "flour",
+        "chips", "snack", "biscuit", "cookie", "bread", "tuna", "sardine", "bean", "lentil",
+        "jam", "honey", "oil", "vinegar", "soup", "stock", "tofu", "tempeh", "pickle",
+        "processed", "ready meal",
+    ];
+    if FROZEN.iter().any(|k| n.contains(k)) {
+        "frozen"
+    } else if DRINK.iter().any(|k| n.contains(k)) {
+        "drink"
+    } else if PROCESSED.iter().any(|k| n.contains(k)) {
+        "processed"
     } else if FRUIT.iter().any(|k| n.contains(k)) {
         "fruit"
     } else if VEG.iter().any(|k| n.contains(k)) {
@@ -160,17 +194,20 @@ pub fn guess_category(name: &str) -> &'static str {
 }
 
 /// Known categories: (id, emoji, display label).
-pub const CATEGORIES: [(&str, &str, &str); 4] = [
-    ("fruit", "🍎", "Fruit"),
-    ("vegetable", "🥬", "Veggies"),
-    ("bottle", "🧴", "Drinks"),
+pub const CATEGORIES: [(&str, &str, &str); 6] = [
+    ("fruit", "🍎", "Fruits"),
+    ("vegetable", "🥬", "Vegetables"),
+    ("frozen", "🧊", "Frozen"),
+    ("drink", "🥤", "Drinks"),
+    ("processed", "🥫", "Dry / processed"),
     ("other", "📦", "Other"),
 ];
 
 pub fn category_emoji(category: &str) -> &'static str {
+    let cat = if category == "bottle" { "drink" } else { category };
     CATEGORIES
         .iter()
-        .find(|(id, _, _)| *id == category)
+        .find(|(id, _, _)| *id == cat)
         .map(|(_, e, _)| *e)
         .unwrap_or("📦")
 }
@@ -455,7 +492,9 @@ mod tests {
     fn categories_are_guessed_from_names() {
         assert_eq!(guess_category("Cucumber"), "vegetable");
         assert_eq!(guess_category("yellow kiwi"), "fruit");
-        assert_eq!(guess_category("Bottle of water"), "bottle");
+        assert_eq!(guess_category("Bottle of water"), "drink");
+        assert_eq!(guess_category("Frozen peas"), "frozen");
+        assert_eq!(guess_category("Kimchi jar"), "processed");
         assert_eq!(guess_category("Something weird"), "other");
     }
 }

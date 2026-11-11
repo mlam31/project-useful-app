@@ -8,9 +8,9 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Price Compare" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/icon-180.png" />
-    <link rel="icon" href="/icon-192.png" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <link rel="icon" href="icon-192.png" />
     <link data-trunk rel="rust" data-bin="useful_app" data-wasm-opt="2" />
     <title>Price Compare</title>
     <style>
@@ -109,9 +109,9 @@
             padding: 0;
         }
         select.unit-select {
-            width: 62px;
-            padding: 10px 6px;
-            text-align: center;
+            width: 100%;
+            padding: 10px 8px;
+            text-align: left;
         }
 
         .product-input, .search-input {
@@ -173,9 +173,9 @@
             border: none;
             color: #777;
             font-family: inherit;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
-            padding: 9px 0;
+            padding: 8px 0;
             border-radius: 12px;
             cursor: pointer;
         }
@@ -233,8 +233,29 @@
             color: #ccc;
             margin-bottom: 8px;
             line-height: 1.4;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
         }
-        .entry-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .ed-date { color: #999; white-space: nowrap; }
+        .ed-prices { text-align: right; flex: 1; }
+        .entry-history { margin: 8px 0 10px; padding-top: 8px; border-top: 1px dashed #333; }
+        .eh-title { font-size: 12px; color: #888; margin-bottom: 4px; font-weight: 600; }
+        .eh-body { margin: 0; font-family: inherit; font-size: 12px; color: #aaa; white-space: pre-wrap; line-height: 1.5; }
+        .grade { font-size: 22px; font-weight: 800; padding: 8px 10px; border-radius: 12px; border: 1px solid #333; min-width: 72px; text-align: center; }
+        .grade.good { background: #0f1f0f; color: #7dff7d; border-color: #2f5a2f; }
+        .grade.mid { background: #1f1a0f; color: #ffd36a; border-color: #5a4a2f; }
+        .grade.bad { background: #1f0f0f; color: #ff8a8a; border-color: #5a2f2f; }
+        .ing-list { margin: 4px 0 0 18px; padding: 0; font-size: 13px; line-height: 1.4; }
+        .ing-list.good { color: #bfe6bf; }
+        .ing-list.bad { color: #e6bfbf; }
+        .rate-badge { font-size: 12px; font-weight: 700; padding: 2px 6px; border-radius: 8px; border: 1px solid #333; margin-top: 4px; display: inline-block; }
+        .rate-badge.good { color: #7dff7d; border-color: #2f5a2f; }
+        .rate-badge.mid { color: #ffd36a; border-color: #5a4a2f; }
+        .rate-badge.bad { color: #ff8a8a; border-color: #5a2f2f; }
+        .entry-row { gap: 12px; }
+        .entry-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
         .entry-actions .menu-item {
             width: auto;
             flex: 1 1 auto;
@@ -253,7 +274,7 @@
         }
         .row-check.checked { background: #fff; border-color: #fff; }
         .e-info { min-width: 0; flex: 1; }
-        .e-name { font-weight: 600; font-size: 15px; }
+        .e-name { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
         .e-meta { font-size: 11px; color: #777; margin-top: 2px; display: flex; gap: 6px; align-items: center; }
         .e-prices { text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
         .e-sub { font-size: 15px; font-weight: 700; color: #fff; }
@@ -383,10 +404,13 @@
 
         .grid2 {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 8px;
             margin-top: 10px;
         }
+        .e-paid { font-size: 14px; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+        .e-right { text-align: right; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+        .e-info { min-width: 0; flex: 1; }
         select.unit-select.wide { width: 100%; text-align: left; }
 
         /* ---------- verdict ---------- */
@@ -565,9 +589,73 @@
             var host = location.hostname;
             var secure = location.protocol === "https:" || host === "localhost" || host === "127.0.0.1";
             if (secure) {
-                navigator.serviceWorker.register("/sw.js").catch(function () {});
+                navigator.serviceWorker.register("./sw.js").catch(function () {});
             }
         })();
+
+        // Camera barcode scan helpers (used by WASM). Uses BarcodeDetector when available.
+        window.__scanStream = null;
+        window.__scanTimer = null;
+        window.__scanDetector = null;
+
+        window.startBarcodeScan = async function(onResult, onError) {
+            try {
+                if (!('BarcodeDetector' in window)) {
+                    onError('BarcodeDetector not supported on this browser. You can enter the barcode number manually.');
+                    return false;
+                }
+                var formats = ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'];
+                try { formats = await window.BarcodeDetector.getSupportedFormats(); } catch(e) {}
+                window.__scanDetector = new window.BarcodeDetector({ formats: (formats && formats.length) ? formats : ['ean_13','ean_8','upc_a','upc_e'] });
+                var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+                window.__scanStream = stream;
+                var host = document.getElementById('scan-video-host');
+                if (!host) { onError('Scan view not ready'); window.stopBarcodeScan(); return false; }
+                host.innerHTML = '';
+                var video = document.createElement('video');
+                video.id = 'scan-video';
+                video.setAttribute('playsinline', '');
+                video.setAttribute('autoplay', '');
+                video.muted = true;
+                video.style.width = '100%';
+                video.style.borderRadius = '12px';
+                video.style.background = '#000';
+                host.appendChild(video);
+                video.srcObject = stream;
+                try { await video.play(); } catch(e) {}
+                var detect = async function() {
+                    try {
+                        if (!window.__scanDetector || !video || video.readyState < 2) return;
+                        var barcodes = await window.__scanDetector.detect(video);
+                        if (barcodes && barcodes.length > 0) {
+                            var value = barcodes[0].rawValue || '';
+                            if (value) {
+                                window.stopBarcodeScan();
+                                onResult(value);
+                            }
+                        }
+                    } catch (e) { /* ignore frame errors */ }
+                };
+                window.__scanTimer = setInterval(detect, 400);
+                return true;
+            } catch (e) {
+                onError('Camera access failed: ' + (e && e.message ? e.message : String(e)) + '. On iPhone, camera needs HTTPS (or localhost). You can enter the barcode manually.');
+                window.stopBarcodeScan();
+                return false;
+            }
+        };
+
+        window.stopBarcodeScan = function() {
+            if (window.__scanTimer) { clearInterval(window.__scanTimer); window.__scanTimer = null; }
+            if (window.__scanStream) {
+                try { window.__scanStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+                window.__scanStream = null;
+            }
+            var video = document.getElementById('scan-video');
+            if (video) { try { video.srcObject = null; } catch(e){} }
+            var host = document.getElementById('scan-video-host');
+            if (host) { host.innerHTML = ''; }
+        };
     </script>
 </body>
 </html>

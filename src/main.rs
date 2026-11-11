@@ -561,7 +561,7 @@ fn StoresView(
                             new_name.set(String::new());
                         }>"✕"</button>
                     </div>
-                    <button class="add-btn" on:click=add_store>{move || tr(&settings.get().language, "create_store").to_string()}</button>
+                    <button class="add-btn" style="margin-top:12px;" on:click=add_store>{move || tr(&settings.get().language, "create_store").to_string()}</button>
                 </div>
             </Show>
 

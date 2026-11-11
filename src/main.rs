@@ -227,7 +227,11 @@ fn compute_ranking(
 }
 
 // ---------------------------------------------------------------- GPS pin
+// Currently disabled: Safari only grants geolocation on HTTPS, which doesn't
+// apply while testing over plain HTTP on the LAN. Kept here so the 📍 button
+// can be re-enabled once the app is deployed over HTTPS.
 
+#[allow(dead_code)]
 async fn reverse_geocode(lat: f64, lon: f64) -> String {
     let fallback = format!("{:.5}, {:.5}", lat, lon);
     let url = format!(
@@ -248,6 +252,7 @@ async fn reverse_geocode(lat: f64, lon: f64) -> String {
 
 /// Ask the browser for the current position, reverse-geocode it and hand the
 /// address to `apply`. Failures are reported to `on_error`.
+#[allow(dead_code)]
 fn pin_address(
     apply: impl Fn(String) + 'static,
     on_error: impl Fn(String) + 'static,
@@ -578,16 +583,10 @@ fn StoreView(
     };
 
     // ---- store header
-    let pinning = RwSignal::new(false);
-    let pin_error = RwSignal::new(String::new());
-    let pin = move |_| {
-        pin_error.set(String::new());
-        pin_address(
-            move |addr| update_store(stores, store_id, move |s| s.address = Some(addr)),
-            move |msg| pin_error.set(msg),
-            pinning,
-        );
-    };
+    // 📍 GPS pin is disabled for now: Safari only grants geolocation on HTTPS,
+    // which doesn't apply while testing over plain HTTP on the LAN. The helper
+    // (pin_address) stays in the code — re-enable the button below once the
+    // app is deployed over HTTPS.
 
     let delete_store = move |_| {
         stores.update(|v| v.retain(|s| s.id != store_id));
@@ -606,21 +605,12 @@ fn StoreView(
                 on:input=move |ev| update_store(stores, store_id, move |s| s.name = event_target_value(&ev))
             />
 
-            <div class="add-inline">
-                <input
-                    class="addr-input"
-                    placeholder="Address (optional)"
-                    prop:value=move || stores.get().iter().find(|s| s.id == store_id).and_then(|s| s.address.clone()).unwrap_or_default()
-                    on:input=move |ev| update_store(stores, store_id, move |s| s.address = Some(event_target_value(&ev)))
-                />
-                <button class="icon-btn" title="Use my current location" on:click=pin>"📍"</button>
-            </div>
-            <Show when=move || pinning.get()>
-                <div class="hint">"Locating…"</div>
-            </Show>
-            <Show when=move || !pin_error.get().is_empty()>
-                <div class="hint error">{move || pin_error.get()}</div>
-            </Show>
+            <input
+                class="addr-input"
+                placeholder="Address (optional)"
+                prop:value=move || stores.get().iter().find(|s| s.id == store_id).and_then(|s| s.address.clone()).unwrap_or_default()
+                on:input=move |ev| update_store(stores, store_id, move |s| s.address = Some(event_target_value(&ev)))
+            />
 
             // ---- recorded products
             <h2 class="section">"Products recorded here"</h2>

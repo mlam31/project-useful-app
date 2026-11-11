@@ -98,33 +98,67 @@ fn currency_rate(currencies: &[Currency], code: &str) -> f64 {
 fn tr(lang: &str, key: &str) -> &'static str {
     match (lang, key) {
         ("fr", "stores") => "Magasins",
-        ("es", "stores") => "Tiendas",
-        ("zh", "stores") => "商店",
         (_, "stores") => "Stores",
         ("fr", "products") => "Produits",
-        ("es", "products") => "Productos",
-        ("zh", "products") => "产品",
         (_, "products") => "Products",
         ("fr", "scan") => "Scanner",
-        ("es", "scan") => "Escanear",
-        ("zh", "scan") => "扫描",
         (_, "scan") => "Scan",
         ("fr", "settings") => "Réglages",
-        ("es", "settings") => "Ajustes",
-        ("zh", "settings") => "设置",
         (_, "settings") => "Settings",
         ("fr", "language") => "Langue",
-        ("es", "language") => "Idioma",
-        ("zh", "language") => "语言",
         (_, "language") => "Language",
-        ("fr", "app_language") => "Langue de l'app",
-        ("es", "app_language") => "Idioma de la app",
-        ("zh", "app_language") => "应用语言",
+        ("fr", "app_language") => "Langue de l'application",
         (_, "app_language") => "App language",
         ("fr", "scan_title") => "Scanner & évaluer",
-        ("es", "scan_title") => "Escanear y evaluar",
-        ("zh", "scan_title") => "扫描与评分",
         (_, "scan_title") => "Scan & rate",
+        ("fr", "search_stores") => "Rechercher un magasin",
+        (_, "search_stores") => "Search stores",
+        ("fr", "new_store_name") => "Nom du nouveau magasin",
+        (_, "new_store_name") => "New store name",
+        ("fr", "create_store") => "Créer le magasin",
+        (_, "create_store") => "Create store",
+        ("fr", "add_product") => "Ajouter un produit",
+        (_, "add_product") => "Add a product",
+        ("fr", "look_up") => "Rechercher",
+        (_, "look_up") => "Look up",
+        ("fr", "use_camera") => "Utiliser la caméra",
+        (_, "use_camera") => "Use camera",
+        ("fr", "stop_camera") => "Arrêter la caméra",
+        (_, "stop_camera") => "Stop camera",
+        ("fr", "barcode") => "Code-barres (EAN/UPC)",
+        (_, "barcode") => "Barcode (EAN/UPC)",
+        ("fr", "add_to_store") => "Ajouter au magasin",
+        (_, "add_to_store") => "Add to a store",
+        ("fr", "store") => "Magasin",
+        (_, "store") => "Store",
+        ("fr", "select_store") => "Choisir un magasin…",
+        (_, "select_store") => "Select a store…",
+        ("fr", "new_store") => "Nouveau magasin…",
+        (_, "new_store") => "New store…",
+        ("fr", "price_optional") => "Prix (optionnel)",
+        (_, "price_optional") => "Price (optional)",
+        ("fr", "quantity") => "Quantité",
+        (_, "quantity") => "Quantity",
+        ("fr", "add_product_to_store") => "Ajouter le produit au magasin",
+        (_, "add_product_to_store") => "Add product to store",
+        ("fr", "scan_hint") => "Entrez un code-barres pour rechercher un produit (Open Food Facts). Vous verrez une note /100, les bons/mauvais ingrédients, et pourrez l'ajouter à un magasin.",
+        (_, "scan_hint") => "Enter a barcode number to look up a product (Open Food Facts). You’ll see a grade /100, good/bad ingredients, and can add it to a store.",
+        ("fr", "camera_hint") => "Pointez la caméra vers un code-barres. Si ça ne marche pas, saisissez le numéro.",
+        (_, "camera_hint") => "Point the camera at a barcode. If it doesn’t scan, type the number above.",
+        ("fr", "save_changes") => "Enregistrer",
+        (_, "save_changes") => "Save changes",
+        ("fr", "save_product_price") => "Enregistrer le produit et le prix",
+        (_, "save_product_price") => "Save product & price",
+        ("fr", "new_price") => "Nouveau prix",
+        (_, "new_price") => "New price",
+        ("fr", "copy_store") => "Copier vers un autre magasin",
+        (_, "copy_store") => "Copy to another store",
+        ("fr", "compare") => "Comparer",
+        (_, "compare") => "Compare",
+        ("fr", "delete") => "Supprimer",
+        (_, "delete") => "Delete",
+        ("fr", "price_history") => "Historique des prix",
+        (_, "price_history") => "Price history",
         _ => "",
     }
 }
@@ -469,6 +503,7 @@ fn StoresView(
     stores: RwSignal<Vec<Store>>,
     entries: RwSignal<Vec<PriceEntry>>,
     nav: RwSignal<Nav>,
+    settings: RwSignal<Settings>,
 ) -> impl IntoView {
     let search = RwSignal::new(String::new());
     let adding = RwSignal::new(false);
@@ -499,13 +534,13 @@ fn StoresView(
 
     view! {
         <div class="page">
-            <header><h1>"Stores"</h1></header>
+            <header><h1>{move || tr(&settings.get().language, "stores").to_string()}</h1></header>
 
             <div class="search-wrap">
                 <input
                     class="search-input"
                     style="margin-bottom:0; padding-right:44px;"
-                    placeholder="Search stores"
+                    placeholder=move || tr(&settings.get().language, "search_stores")
                     prop:value=move || search.get()
                     on:input=move |ev| search.set(event_target_value(&ev))
                 />
@@ -517,7 +552,7 @@ fn StoresView(
                     <div class="row">
                         <input
                             class="store-input"
-                            placeholder="New store name"
+                            placeholder=move || tr(&settings.get().language, "new_store_name")
                             prop:value=move || new_name.get()
                             on:input=move |ev| new_name.set(event_target_value(&ev))
                         />
@@ -526,7 +561,7 @@ fn StoresView(
                             new_name.set(String::new());
                         }>"✕"</button>
                     </div>
-                    <button class="add-btn" on:click=add_store>"Create store"</button>
+                    <button class="add-btn" on:click=add_store>{move || tr(&settings.get().language, "create_store").to_string()}</button>
                 </div>
             </Show>
 
@@ -837,7 +872,7 @@ fn StoreView(
                 fallback=move || {
                     view! {
                         <button class="collapse-btn" on:click=move |_| { editing_id.set(None); form_open.set(true); }>
-                            "Add a product"
+                            {move || tr(&settings.get().language, "add_product").to_string()}
                         </button>
                     }
                 }
@@ -1012,7 +1047,10 @@ fn StoreView(
                         </label>
                     </Show>
 
-                    <button class="add-btn" on:click=save_price>{move || if editing_id.get().is_some() { "Save changes" } else { "Save product & price" }}</button>
+                    <button class="add-btn" on:click=save_price>{move || {
+                        let lang = settings.get().language;
+                        if editing_id.get().is_some() { tr(&lang, "save_changes").to_string() } else { tr(&lang, "save_product_price").to_string() }
+                    }}</button>
                 </div>
             </Show>
 
@@ -1193,7 +1231,7 @@ fn StoreView(
                                     {move || {
                                         let h = history_sv.get_value();
                                         if h.is_empty() { None } else {
-                                            Some(view! { <div class="entry-history"><div class="eh-title">"Price history"</div><pre class="eh-body">{h}</pre></div> })
+                                            Some(view! { <div class="entry-history"><div class="eh-title">{move || tr(&settings.get().language, "price_history").to_string()}</div><pre class="eh-body">{h}</pre></div> })
                                         }
                                     }}
                                     <div class="entry-actions">
@@ -1216,10 +1254,10 @@ fn StoreView(
                                             editing_id.set(None); // save as new entry to keep history
                                             form_open.set(true);
                                             menu_entry.set(None);
-                                        }>"New price"</button>
+                                        }>{move || tr(&settings.get().language, "new_price").to_string()}</button>
                                         <button class="menu-item" on:click=move |_| {
                                             copy_entry_id.update(|c| *c = if *c == Some(eid) { None } else { Some(eid) });
-                                        }>"Copy to another store"</button>
+                                        }>{move || tr(&settings.get().language, "copy_store").to_string()}</button>
                                     </div>
                                     <Show when=is_copying>
                                         <div class="copy-list">
@@ -1256,10 +1294,10 @@ fn StoreView(
             <Show when=move || !selected_entries.get().is_empty()>
                 <div class="row" style="gap:8px;">
                     <button class="add-btn compare" style="flex:1; margin-top:8px;" on:click=move |_| { haptic(); compare_selected(()); }>
-                        "Compare (" {move || selected_entries.get().len()} ")"
+                        {move || format!("{} ({})", tr(&settings.get().language, "compare"), selected_entries.get().len())}
                     </button>
                     <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; color:#fff; border-color:#844;" on:click=move |_| { haptic(); delete_selected(()); }>
-                        "Delete (" {move || selected_entries.get().len()} ")"
+                        {move || format!("{} ({})", tr(&settings.get().language, "delete"), selected_entries.get().len())}
                     </button>
                 </div>
             </Show>
@@ -1801,6 +1839,39 @@ struct ScanResult {
     bad: Vec<String>,
 }
 
+/// Parse Open Food Facts quantity string into (quantity, qty_unit, unit_weight, weight_unit)
+/// for our PriceEntry. Examples: "500 g" -> ("500","g","","g"), "1.5 L" -> ("1.5","l","","g"), "2 x 250 g" -> ("500","g","","g") approx.
+fn parse_off_quantity(q: &str) -> (String, String, String, String) {
+    let s = q.trim().to_lowercase().replace(',', ".");
+    if s.is_empty() {
+        return ("1".into(), "pc".into(), "".into(), "g".into());
+    }
+    // Try "N x M unit" or "N × M unit"
+    let parts: Vec<&str> = if s.contains('x') { s.split('x').collect() } else if s.contains('×') { s.split('×').collect() } else { vec![] };
+    if parts.len() == 2 {
+        let a = domain::parse_number(parts[0]);
+        let bstr = parts[1].trim();
+        if let (Some(a), Some(b)) = (a, domain::parse_number(bstr)) {
+            let unit = if bstr.contains("kg") { "kg" }
+                else if bstr.contains("ml") { "ml" }
+                else if bstr.contains("cl") { "ml" }
+                else if bstr.contains('l') { "l" }
+                else { "g" };
+            let bval = if bstr.contains("cl") { b * 10.0 } else { b };
+            let total = a * bval;
+            return (format!("{}", total), unit.to_string(), "".into(), "g".into());
+        }
+    }
+    if let Some(v) = domain::parse_number(&s) {
+        if s.contains("kg") { return (format!("{}", v), "kg".into(), "".into(), "g".into()); }
+        if s.contains("ml") { return (format!("{}", v), "ml".into(), "".into(), "g".into()); }
+        if s.contains("cl") { return (format!("{}", v * 10.0), "ml".into(), "".into(), "g".into()); }
+        if s.contains('l') { return (format!("{}", v), "l".into(), "".into(), "g".into()); }
+        if s.contains('g') { return (format!("{}", v), "g".into(), "".into(), "g".into()); }
+    }
+    ("1".into(), "pc".into(), "".into(), "g".into())
+}
+
 fn compute_grade(nutriscore: &str, nova: Option<i64>, additives_n: usize, eco: &str) -> (u8, Vec<String>, Vec<String>) {
     let mut score: i32 = match nutriscore.to_lowercase().as_str() {
         "a" => 90,
@@ -1858,7 +1929,6 @@ fn ScanView(
     nav: RwSignal<Nav>,
     settings: RwSignal<Settings>,
 ) -> impl IntoView {
-    let _ = nav;
     let barcode = RwSignal::new(String::new());
     let status = RwSignal::new(String::new());
     let result: RwSignal<Option<ScanResult>> = RwSignal::new(None);
@@ -2034,27 +2104,40 @@ fn ScanView(
                 if p.name.trim().is_empty() { p.name = res.name.clone(); }
             }
         });
-        // create a price entry in the selected store
+        // create a price entry in the selected store (use scanned quantity/weight when available)
         let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
         let mut entry = PriceEntry::new(eid, sid, pid);
         let price = add_price.get_untracked();
         entry.price = if price.trim().is_empty() { "0".to_string() } else { price };
-        entry.quantity = add_qty.get_untracked();
-        entry.qty_unit = "pc".to_string();
+        let (pq, punit, uw, wu) = parse_off_quantity(&res.quantity);
+        // If user entered a quantity, prefer it; else use parsed OFF quantity
+        let user_qty = add_qty.get_untracked();
+        let user_qty_trim = user_qty.trim();
+        if user_qty_trim.is_empty() || user_qty_trim == "1" {
+            entry.quantity = pq;
+            entry.qty_unit = punit;
+            entry.unit_weight = uw;
+            entry.weight_unit = wu;
+        } else {
+            entry.quantity = user_qty;
+            entry.qty_unit = "pc".to_string();
+        }
         entry.currency = settings.get_untracked().main_currency;
         entry.date = today_iso();
         entries.update(|v| v.push(entry));
         status.set("Added to store".to_string());
+        // Navigate to store so user sees the added item
+        nav.set(Nav::StoreDetail(sid));
     };
 
     view! {
         <div class="page">
-            <header><h1>"Scan & rate"</h1></header>
-            <div class="hint">"Enter a barcode number to look up a product (Open Food Facts). You’ll see a grade /100, good/bad ingredients, and can add it to a store."</div>
+            <header><h1>{move || tr(&settings.get().language, "scan_title").to_string()}</h1></header>
+            <div class="hint">{move || tr(&settings.get().language, "scan_hint").to_string()}</div>
 
             <div class="card">
                 <label class="field">
-                    <span class="lbl">"Barcode (EAN/UPC)"</span>
+                    <span class="lbl">{move || tr(&settings.get().language, "barcode").to_string()}</span>
                     <input
                         inputmode="numeric"
                         placeholder="e.g. 3017620422003"
@@ -2068,12 +2151,12 @@ fn ScanView(
                         when=move || scanning.get()
                         fallback=move || view! { <button class="add-btn" style="flex:1; margin-top:8px;" on:click=move |ev| { haptic(); start_scan(ev); }>"Use camera"</button> }
                     >
-                        <button class="add-btn danger" style="flex:1; margin-top:8px; background:#1a0a0a; border-color:#844;" on:click=stop_scan>"Stop camera"</button>
+                        <button class="add-btn" style="flex:1; margin-top:8px; background:#3a1111; color:#fff; border:1px solid #aa5555;" on:click=move |_| { haptic(); stop_scan(()); }>{move || tr(&settings.get().language, "stop_camera").to_string()}</button>
                     </Show>
                 </div>
                 <Show when=move || scanning.get()>
                     <div id="scan-video-host" style="margin-top:10px;"></div>
-                    <div class="hint" style="margin-top:8px;">"Point the camera at a barcode. If it doesn’t scan, type the number above."</div>
+                    <div class="hint" style="margin-top:8px;">{move || tr(&settings.get().language, "camera_hint").to_string()}</div>
                 </Show>
             </div>
 
@@ -2088,6 +2171,7 @@ fn ScanView(
                     let name = r.name.clone();
                     let sub = if r.brand.is_empty() { r.quantity.clone() } else { format!("{} · {}", r.brand, r.quantity) };
                     let meta = format!("Nutri-Score {} · NOVA {}", r.nutriscore, if r.nova.is_empty() { "?".into() } else { r.nova.clone() });
+            let _off_qty = r.quantity.clone();
                     let good = r.good.clone();
                     let bad = r.bad.clone();
                     let has_good = !good.is_empty();
@@ -2115,32 +2199,40 @@ fn ScanView(
                                 </div>
                             </Show>
 
-                            <h2 class="section" style="margin-top:12px;">"Add to a store"</h2>
+                            <h2 class="section" style="margin-top:12px;">{move || tr(&settings.get().language, "add_to_store").to_string()}</h2>
                             <label class="field">
-                                <span class="lbl">"Store"</span>
+                                <span class="lbl">{move || tr(&settings.get().language, "store").to_string()}</span>
                                 <select class="unit-select wide" prop:value=move || selected_store.get() on:change=move |ev| selected_store.set(event_target_value(&ev))>
-                                    <option value="">"Select a store…"</option>
-                                    <option value="__new__">"New store…"</option>
+                                    <option value="">{move || tr(&settings.get().language, "select_store")}</option>
+                                    <option value="__new__">{move || tr(&settings.get().language, "new_store")}</option>
                                     {move || stores.get().iter().map(|s| view!{ <option value=s.id.to_string()>{s.name.clone()}</option> }).collect_view()}
                                 </select>
                             </label>
                             <Show when=move || selected_store.get() == "__new__">
                                 <label class="field">
-                                    <span class="lbl">"New store name"</span>
-                                    <input placeholder="Store name" prop:value=move || new_store_name.get() on:input=move |ev| new_store_name.set(event_target_value(&ev)) />
+                                    <span class="lbl">{move || tr(&settings.get().language, "new_store_name").to_string()}</span>
+                                    <input placeholder=move || tr(&settings.get().language, "new_store_name") prop:value=move || new_store_name.get() on:input=move |ev| new_store_name.set(event_target_value(&ev)) />
                                 </label>
                             </Show>
                             <div class="grid2">
                                 <label class="field">
-                                    <span class="lbl">"Price (optional)"</span>
+                                    <span class="lbl">{move || tr(&settings.get().language, "price_optional").to_string()}</span>
                                     <input inputmode="decimal" placeholder="0.00" prop:value=move || add_price.get() on:input=move |ev| add_price.set(event_target_value(&ev)) />
                                 </label>
                                 <label class="field">
-                                    <span class="lbl">"Quantity"</span>
-                                    <input inputmode="decimal" placeholder="1" prop:value=move || add_qty.get() on:input=move |ev| add_qty.set(event_target_value(&ev)) />
+                                    <span class="lbl">{move || tr(&settings.get().language, "quantity").to_string()}</span>
+                                    <input inputmode="decimal" placeholder=move || result.get().map(|r| if r.quantity.is_empty() { "1".to_string() } else { r.quantity.clone() }).unwrap_or_else(|| "1".to_string()) prop:value=move || add_qty.get() on:input=move |ev| add_qty.set(event_target_value(&ev)) />
                                 </label>
                             </div>
-                            <button class="add-btn" on:click=add_to_store>"Add product to store"</button>
+                            <Show when=move || result.get().map(|r| !r.quantity.is_empty()).unwrap_or(false)>
+                                <div class="hint" style="margin-top:6px;">{move || {
+                                    let lang = settings.get().language;
+                                    let q = result.get().map(|r| r.quantity).unwrap_or_default();
+                                    if lang == "fr" { format!("Taille détectée : {} (utilisée pour le prix au kg/L si quantité = 1)", q) }
+                                    else { format!("Detected product size: {} (used for per-kg/L comparison if quantity = 1)", q) }
+                                }}</div>
+                            </Show>
+                            <button class="add-btn" on:click=add_to_store>{move || tr(&settings.get().language, "add_product_to_store").to_string()}</button>
                         </div>
                     }
                 })}
@@ -2243,8 +2335,6 @@ fn SettingsView(
                 >
                     <option value="en">"English"</option>
                     <option value="fr">"Français"</option>
-                    <option value="es">"Español"</option>
-                    <option value="zh">"中文"</option>
                 </select>
             </label>
 
@@ -2446,7 +2536,7 @@ fn App() -> impl IntoView {
         <main>
             <button class="scan-fab" title="Scan" on:click=move |_| { haptic(); nav.set(Nav::Scan); }>"Scan"</button>
             {move || match nav.get() {
-                Nav::Stores => view! { <StoresView stores entries nav /> }.into_any(),
+                Nav::Stores => view! { <StoresView stores entries nav settings /> }.into_any(),
                 Nav::StoreDetail(id) => {
                     view! {
                         <StoreView store_id=id stores products entries currencies settings nav />

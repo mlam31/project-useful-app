@@ -219,7 +219,7 @@
 
         .icon-btn.small { width: 32px; height: 32px; font-size: 13px; border-radius: 8px; }
 
-        /* ---------- suggestion chips ---------- */
+        /* ---------- chips (suggestions + filters) ---------- */
         .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .chip {
             background: #000;
@@ -233,6 +233,47 @@
         }
         .chip:active { border-color: #fff; color: #fff; }
         .chip.active { background: #fff; color: #000; border-color: #fff; }
+
+        /* bigger filter chips with labels */
+        .filter-row .chip {
+            font-size: 15px;
+            font-weight: 600;
+            padding: 10px 16px;
+            border-radius: 12px;
+        }
+
+        /* ---------- ⋯ menu for destructive actions ---------- */
+        .page-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .dots-btn {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 6px 12px;
+            cursor: pointer;
+        }
+        .menu-card {
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 6px;
+            margin-bottom: 12px;
+        }
+        .menu-item {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-family: inherit;
+            font-size: 15px;
+            padding: 12px;
+            text-align: left;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .menu-item:active { background: #1a1a1a; }
 
         /* ---------- collapsible sections ---------- */
         .collapse-btn {
@@ -365,6 +406,7 @@
         .rank-delta { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
         .rank-delta.winner { color: #fff; font-weight: 700; }
         .rank-orig { font-size: 11px; color: #666; font-variant-numeric: tabular-nums; }
+        .rank-sec { font-size: 11px; color: #999; font-variant-numeric: tabular-nums; }
 
         /* ---------- offer cards ---------- */
         .card {

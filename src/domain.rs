@@ -30,8 +30,13 @@ pub struct PriceEntry {
     /// Total price paid for `quantity` units.
     pub price: String,
     /// How many units the price covers (6-pack = "6"). Default "1".
+    /// When `qty_unit` is g/kg/L/ml, this is the total amount purchased.
     pub quantity: String,
-    /// Weight of ONE unit (optional; needed for /kg comparison).
+    /// What `quantity` counts: "pc" (pieces/units), "g", "kg", "l" or "ml".
+    #[serde(default = "default_qty_unit")]
+    pub qty_unit: String,
+    /// Weight of ONE unit (optional; needed for /kg comparison). Only used
+    /// when `qty_unit` is "pc".
     pub unit_weight: String,
     /// Unit for `unit_weight`: "g", "kg", "oz" or "lb".
     pub weight_unit: String,
@@ -51,6 +56,7 @@ impl PriceEntry {
             product_id,
             price: String::new(),
             quantity: "1".to_string(),
+            qty_unit: "pc".to_string(),
             unit_weight: String::new(),
             weight_unit: "g".to_string(),
             currency: String::new(),
@@ -74,14 +80,24 @@ pub struct Currency {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub main_currency: String,
+    /// Optional second currency: converted prices are also shown in it,
+    /// alongside the main one (e.g. see EUR while shopping in AUD).
+    #[serde(default)]
+    pub second_currency: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             main_currency: "EUR".to_string(),
+            second_currency: None,
         }
     }
+}
+
+/// Default quantity unit for entries stored before the field existed.
+fn default_qty_unit() -> String {
+    "pc".to_string()
 }
 
 /// Starter currency list. Rates are rough EUR-based placeholders —
@@ -139,19 +155,19 @@ pub fn guess_category(name: &str) -> &'static str {
     }
 }
 
-/// Known categories with their emoji.
-pub const CATEGORIES: [(&str, &str); 4] = [
-    ("fruit", "🍎"),
-    ("vegetable", "🥬"),
-    ("bottle", "🧴"),
-    ("other", "📦"),
+/// Known categories: (id, emoji, display label).
+pub const CATEGORIES: [(&str, &str, &str); 4] = [
+    ("fruit", "🍎", "Fruit"),
+    ("vegetable", "🥬", "Veggies"),
+    ("bottle", "🧴", "Drinks"),
+    ("other", "📦", "Other"),
 ];
 
 pub fn category_emoji(category: &str) -> &'static str {
     CATEGORIES
         .iter()
-        .find(|(id, _)| *id == category)
-        .map(|(_, e)| *e)
+        .find(|(id, _, _)| *id == category)
+        .map(|(_, e, _)| *e)
         .unwrap_or("📦")
 }
 
@@ -187,29 +203,54 @@ pub fn weight_to_kg(value: f64, unit: &str) -> f64 {
 /// Normalized prices computed from a price entry's inputs.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Quote {
-    /// Price for one unit (total ÷ quantity).
+    /// Price for one unit (total ÷ quantity). None for weighed/volume buys.
     pub per_unit: Option<f64>,
     /// Price per kilogram — the fair comparison basis for produce.
     pub per_kg: Option<f64>,
+    /// Price per liter (for quantities entered in L or ml).
+    pub per_l: Option<f64>,
 }
 
 /// Compute the normalized price of an entry.
 ///
-/// - per_unit = price / quantity
-/// - per_kg   = price / (quantity × unit weight), only when the weight is known
+/// - qty_unit "pc": per_unit = price / quantity, per_kg when the unit
+///   weight is known
+/// - qty_unit "g"/"kg": `quantity` is the total mass → per_kg
+/// - qty_unit "l"/"ml": `quantity` is the total volume → per_l
 pub fn entry_quote(entry: &PriceEntry) -> Quote {
     let price = parse_number(&entry.price);
-    let qty = parse_number(&entry.quantity).unwrap_or(1.0);
-    let weight_kg = parse_number(&entry.unit_weight).map(|w| weight_to_kg(w, &entry.weight_unit));
 
-    let per_unit = price.map(|p| if qty > 0.0 { p / qty } else { p });
-
-    let per_kg = match (price, qty, weight_kg) {
-        (Some(p), q, Some(w)) if q > 0.0 && w > 0.0 => Some(p / (q * w)),
-        _ => None,
-    };
-
-    Quote { per_unit, per_kg }
+    match entry.qty_unit.as_str() {
+        "g" | "kg" => {
+            let mass = parse_number(&entry.quantity).map(|q| weight_to_kg(q, &entry.qty_unit));
+            let per_kg = match (price, mass) {
+                (Some(p), Some(m)) if m > 0.0 => Some(p / m),
+                _ => None,
+            };
+            Quote { per_unit: None, per_kg, per_l: None }
+        }
+        "l" | "ml" => {
+            let vol = parse_number(&entry.quantity)
+                .map(|v| if entry.qty_unit == "ml" { v / 1000.0 } else { v });
+            let per_l = match (price, vol) {
+                (Some(p), Some(v)) if v > 0.0 => Some(p / v),
+                _ => None,
+            };
+            Quote { per_unit: None, per_kg: None, per_l }
+        }
+        // Pieces / units (default)
+        _ => {
+            let qty = parse_number(&entry.quantity).unwrap_or(1.0);
+            let weight_kg =
+                parse_number(&entry.unit_weight).map(|w| weight_to_kg(w, &entry.weight_unit));
+            let per_unit = price.map(|p| if qty > 0.0 { p / qty } else { p });
+            let per_kg = match (price, qty, weight_kg) {
+                (Some(p), q, Some(w)) if q > 0.0 && w > 0.0 => Some(p / (q * w)),
+                _ => None,
+            };
+            Quote { per_unit, per_kg, per_l: None }
+        }
+    }
 }
 
 /// Result of comparing several values.
@@ -284,12 +325,39 @@ mod tests {
             product_id: 1,
             price: price.into(),
             quantity: qty.into(),
+            qty_unit: "pc".into(),
             unit_weight: weight.into(),
             weight_unit: unit.into(),
             currency: "EUR".into(),
             promo: false,
             date: "2026-11-11".into(),
         }
+    }
+
+    fn weighed(id: u64, price: &str, amount: &str, qty_unit: &str) -> PriceEntry {
+        PriceEntry {
+            qty_unit: qty_unit.into(),
+            unit_weight: String::new(),
+            ..entry(id, 1, price, amount, "", "")
+        }
+    }
+
+    #[test]
+    fn gram_quantity_gives_per_kg() {
+        // 6.00 for 500 g of mince -> 12.00 /kg
+        let q = entry_quote(&weighed(1, "6.00", "500", "g"));
+        assert_eq!(q.per_unit, None);
+        assert!((q.per_kg.unwrap() - 12.0).abs() < 1e-9);
+        assert_eq!(q.per_l, None);
+    }
+
+    #[test]
+    fn liter_quantity_gives_per_liter() {
+        // 3.50 for 1.5 L of milk -> 2.33 /L
+        let q = entry_quote(&weighed(1, "3.50", "1.5", "l"));
+        assert_eq!(q.per_unit, None);
+        assert_eq!(q.per_kg, None);
+        assert!((q.per_l.unwrap() - 3.50 / 1.5).abs() < 1e-9);
     }
 
     #[test]

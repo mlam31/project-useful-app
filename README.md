@@ -14,33 +14,37 @@ black & white UI designed for OLED screens.
 The app is a small **database**: Stores → Products → Prices, shown in three
 bottom tabs (🏪 Stores / 🔍 Products / ⚙️ Settings).
 
-- **🏪 Stores tab** — every store you add (with optional address, pinnable via
-  📍 GPS). Open a store to see all products recorded there, filter them, and
-  **add prices**. The *"＋ Add a price"* form stays collapsed to a small bar
-  until you tap it — same for *"＋ Add a store"*, which asks for the name after
-  you tap. The price form supports: product name (autocomplete searches your
-  existing database + **auto-guesses the category** from the name, emoji shown
-  per category 🍎🥬🧴📦), category override, **total price**, **quantity**
-  (5-for-10 = 5), weight of one unit (g/kg/oz/lb, optional — needed to compare
-  per-kg offers against per-unit ones), **currency**, date and a **promo** flag
-  — prices are temporary.
+- **🏪 Stores tab** — every store you add (with optional address). Open a store
+  to see all products recorded there, filter them, and **add products**. The
+  *"＋ Add a product"* form stays collapsed to a small bar until you tap it —
+  same for *"＋ Add a store"*, which asks for the name after you tap. The form
+  supports: product name (autocomplete searches your existing database +
+  **auto-guesses the category** from the name, emoji shown per category),
+  category override, **total price**, **quantity with unit** — pieces
+  (5-for-10 = 5 pieces), or **grams / kg / liters / mL** ("500 g of mince",
+  "1.5 L of milk"), optional weight of one piece (needed to compare per-kg
+  offers against per-unit ones), **currency**, date and a **promo** flag —
+  prices are temporary. Deleting a store is tucked away behind the **⋯ menu**.
 - **🔍 Products tab** — searchable list of every product in your database,
-  filterable by **category chips** (All 🍎 🥬 🧴 📦), each showing its current
-  best price. **Tick the checkboxes** to select similar-but-different products
-  (green kiwi + yellow kiwi) and tap **"⚖️ Compare selected"** to rank offers
-  across all of them. Open a product to compare it across all stores:
-  everything is normalized to a **price per kg** (derived from
-  `price ÷ quantity × unit weight`) or per unit, cheapest first, winner
-  highlighted, savings shown, store names link to Apple Maps. Only the most
-  recent price per (store, product) competes, so old records don't distort
-  the comparison.
+  filterable by **category chips** (All / 🍎 Fruit / 🥬 Veggies / 🧴 Drinks /
+  📦 Other), each showing its current best price. **Tick the checkboxes** to
+  select similar-but-different products (green kiwi + yellow kiwi) and tap
+  **"⚖️ Compare selected"** to rank offers across all of them. Open a product
+  to compare it across all stores: everything is normalized to a **price per
+  kg** (derived from `price ÷ quantity × unit weight`), **per liter** (for
+  quantities entered in L/mL) or per unit, cheapest first, winner highlighted,
+  savings shown, store names link to Apple Maps. Only the most recent price
+  per (store, product) competes, so old records don't distort the comparison.
+  Deleting a product is tucked away behind the **⋯ menu**.
 - **⚙️ Settings tab** — pick your **main currency** (favorite: EUR, USD, AUD,
-  JPY, RMB…). All comparisons are shown in it. Prices are recorded in whatever
-  currency you were paying with — old prices keep their original currency and
-  are **converted automatically** (original values shown in small print when
-  they differ). Exchange rates can be edited manually, refreshed live
-  (free ECB API, Frankfurter) with one tap, and you can **add any new
-  currency** (code + symbol + rate).
+  JPY, RMB…). All comparisons are shown in it. Optionally set a **second
+  currency**: converted prices are shown right next to the main ones — handy
+  to keep a feel for prices from back home (e.g. see EUR while shopping in
+  AUD). Prices are recorded in whatever currency you were paying with — old
+  prices keep their original currency and are **converted automatically**
+  (original values shown in small print when they differ). Exchange rates can
+  be edited manually, refreshed live (free ECB API, Frankfurter) with one tap,
+  and you can **add any new currency** (code + symbol + rate).
 
 All data is stored locally on your device (localStorage). Nothing is sent
 anywhere, except live-rate fetches, the optional 📍 address lookup

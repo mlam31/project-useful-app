@@ -9,6 +9,7 @@ fn entry(id: u64, store: u64, price: &str, qty: &str, weight: &str, unit: &str) 
         product_id: 1,
         price: price.into(),
         quantity: qty.into(),
+        qty_unit: "pc".into(),
         unit_weight: weight.into(),
         weight_unit: unit.into(),
         currency: "EUR".into(),

@@ -102,13 +102,29 @@ struct RankRow {
     /// Converted to the main currency.
     per_unit: Option<f64>,
     per_kg: Option<f64>,
-    /// The value used for ranking: per-kg when any entry has a weight, else per-unit.
+    per_l: Option<f64>,
+    /// The value used for ranking: per-kg when any entry has a weight,
+    /// else per-liter when any entry was bought by volume, else per-unit.
     metric: Option<f64>,
     delta: Option<f64>,
     best: bool,
     kg_mode: bool,
+    l_mode: bool,
     /// Original values in the recorded currency (when different from main).
     orig_text: Option<String>,
+    /// The same prices converted into the second display currency.
+    second_text: Option<String>,
+}
+
+/// Label for the ranking basis.
+fn metric_label(kg_mode: bool, l_mode: bool) -> &'static str {
+    if kg_mode {
+        "/kg"
+    } else if l_mode {
+        "/L"
+    } else {
+        "each"
+    }
 }
 
 /// Rank the prices of one or several products across stores.
@@ -121,6 +137,7 @@ fn compute_ranking(
     products: &[Product],
     currencies: &[Currency],
     main_code: &str,
+    second_code: &str,
     ids: &[u64],
 ) -> Vec<RankRow> {
     let filtered: Vec<PriceEntry> = entries
@@ -162,8 +179,45 @@ fn compute_ranking(
                 if let Some(k) = q.per_kg {
                     parts.push(format!("{}{} /kg", sym, fmt_price(k)));
                 }
+                if let Some(v) = q.per_l {
+                    parts.push(format!("{}{} /L", sym, fmt_price(v)));
+                }
                 if let Some(u) = q.per_unit {
                     parts.push(format!("{}{} each", sym, fmt_price(u)));
+                }
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(parts.join(" · "))
+                }
+            } else {
+                None
+            };
+
+            // Same prices converted into the optional second display currency
+            // (skipped when the entry already IS in the second currency —
+            // the original values are shown above instead).
+            let rate2 = if second_code.is_empty() {
+                0.0
+            } else {
+                currency_rate(currencies, second_code)
+            };
+            let second_text = if !second_code.is_empty()
+                && second_code != main_code
+                && cur != second_code
+                && rate2 > 0.0
+            {
+                let sym2 = symbol_of(currencies, second_code);
+                let to_second = rate / rate2;
+                let mut parts = Vec::new();
+                if let Some(k) = q.per_kg {
+                    parts.push(format!("{}{} /kg", sym2, fmt_price(k * to_second)));
+                }
+                if let Some(v) = q.per_l {
+                    parts.push(format!("{}{} /L", sym2, fmt_price(v * to_second)));
+                }
+                if let Some(u) = q.per_unit {
+                    parts.push(format!("{}{} each", sym2, fmt_price(u * to_second)));
                 }
                 if parts.is_empty() {
                     None
@@ -185,19 +239,30 @@ fn compute_ranking(
                 date: e.date.clone(),
                 per_unit: q.per_unit.map(|v| v * rate),
                 per_kg: q.per_kg.map(|v| v * rate),
+                per_l: q.per_l.map(|v| v * rate),
                 metric: None,
                 delta: None,
                 best: false,
                 kg_mode: false,
+                l_mode: false,
                 orig_text,
+                second_text,
             }
         })
         .collect();
 
     let kg_mode = rows.iter().any(|r| r.per_kg.is_some());
+    let l_mode = !kg_mode && rows.iter().any(|r| r.per_l.is_some());
     for r in rows.iter_mut() {
         r.kg_mode = kg_mode;
-        r.metric = if kg_mode { r.per_kg } else { r.per_unit };
+        r.l_mode = l_mode;
+        r.metric = if kg_mode {
+            r.per_kg
+        } else if l_mode {
+            r.per_l
+        } else {
+            r.per_unit
+        };
     }
 
     // Cheapest first; entries without a metric at the end.
@@ -511,6 +576,7 @@ fn StoreView(
     let cat_touched = RwSignal::new(false);
     let new_price = RwSignal::new(String::new());
     let new_qty = RwSignal::new("1".to_string());
+    let new_qtyunit = RwSignal::new("pc".to_string());
     let new_weight = RwSignal::new(String::new());
     let new_wunit = RwSignal::new("g".to_string());
     let new_cur = RwSignal::new(settings.get_untracked().main_currency.clone());
@@ -560,6 +626,7 @@ fn StoreView(
         entry.price = new_price.get_untracked();
         let qty = new_qty.get_untracked();
         entry.quantity = if qty.trim().is_empty() { "1".to_string() } else { qty };
+        entry.qty_unit = new_qtyunit.get_untracked();
         entry.unit_weight = new_weight.get_untracked();
         entry.weight_unit = new_wunit.get_untracked();
         entry.currency = if new_cur.get_untracked().is_empty() {
@@ -571,12 +638,16 @@ fn StoreView(
         entry.date = new_date.get_untracked();
         entries.update(|v| v.push(entry));
 
-        // Reset the form (keep the date, it usually stays "today").
+        // Reset the form (keep the date and qty unit, they usually stay the same).
         new_product.set(String::new());
         new_cat.set("other".to_string());
         cat_touched.set(false);
         new_price.set(String::new());
-        new_qty.set("1".to_string());
+        if new_qtyunit.get_untracked() == "pc" {
+            new_qty.set("1".to_string());
+        } else {
+            new_qty.set(String::new());
+        }
         new_weight.set(String::new());
         new_promo.set(false);
         form_open.set(false);
@@ -594,9 +665,24 @@ fn StoreView(
         nav.set(Nav::Stores);
     };
 
+    // ⋯ menu keeps destructive actions out of the way.
+    let menu_open = RwSignal::new(false);
+    let toggle_menu = move |_| menu_open.set(!menu_open.get_untracked());
+
     view! {
         <div class="page">
-            <button class="back-btn" on:click=move |_| nav.set(Nav::Stores)>"← Stores"</button>
+            <div class="page-head">
+                <button class="back-btn" on:click=move |_| nav.set(Nav::Stores)>"← Stores"</button>
+                <button class="dots-btn" title="More options" on:click=toggle_menu>"⋯"</button>
+            </div>
+            <Show when=move || menu_open.get()>
+                <div class="menu-card">
+                    <button class="menu-item" on:click=move |_| {
+                        menu_open.set(false);
+                        delete_store(());
+                    }>"🗑 Delete this store"</button>
+                </div>
+            </Show>
 
             <input
                 class="store-title"
@@ -640,21 +726,34 @@ fn StoreView(
                         entry.currency.clone()
                     };
                     let sym = symbol_of(&currencies.get_untracked(), &cur);
-                    let price_txt = if qty != 1.0 {
-                        format!("{}{} × {}", sym, entry.price.trim(), qty)
-                    } else {
-                        format!("{}{}", sym, entry.price.trim())
+                    let price_txt = match entry.qty_unit.as_str() {
+                        "g" | "kg" | "l" | "ml" => {
+                            let unit = match entry.qty_unit.as_str() {
+                                "g" => "g",
+                                "kg" => "kg",
+                                "l" => "L",
+                                _ => "mL",
+                            };
+                            format!(
+                                "{}{} · {} {}",
+                                sym,
+                                entry.price.trim(),
+                                entry.quantity.trim(),
+                                unit
+                            )
+                        }
+                        _ if qty != 1.0 => format!("{}{} × {}", sym, entry.price.trim(), qty),
+                        _ => format!("{}{}", sym, entry.price.trim()),
                     };
-                    let sub = match quote.per_kg {
-                        Some(k) => format!(
-                            "{} each · {} /kg",
-                            fmt_price(quote.per_unit.unwrap_or(0.0)),
-                            fmt_price(k)
-                        ),
-                        None => match quote.per_unit {
+                    let sub = if let Some(k) = quote.per_kg {
+                        format!("{} /kg", fmt_price(k))
+                    } else if let Some(v) = quote.per_l {
+                        format!("{} /L", fmt_price(v))
+                    } else {
+                        match quote.per_unit {
                             Some(u) => format!("{} each", fmt_price(u)),
                             None => "—".to_string(),
-                        },
+                        }
                     };
                     view! {
                         <div class="entry-row">
@@ -677,21 +776,21 @@ fn StoreView(
                 }}
             />
 
-            // ---- add price card (collapsed until tapped)
-            <h2 class="section">"Add a price"</h2>
+            // ---- add product card (collapsed until tapped)
+            <h2 class="section">"Add a product"</h2>
             <Show
                 when=move || form_open.get()
                 fallback=move || {
                     view! {
                         <button class="collapse-btn" on:click=move |_| form_open.set(true)>
-                            "＋ Add a price"
+                            "＋ Add a product"
                         </button>
                     }
                 }
             >
                 <div class="card">
                     <div class="row form-head">
-                        <span class="form-title">"New price"</span>
+                        <span class="form-title">"New product & price"</span>
                         <button class="icon-btn small" title="Collapse" on:click=move |_| form_open.set(false)>"—"</button>
                     </div>
 
@@ -729,8 +828,8 @@ fn StoreView(
                                 }
                             >
                                 {move || {
-                                    domain::CATEGORIES.iter().map(|(id, label)| {
-                                        view! { <option value=*id>{*label}</option> }
+                                    domain::CATEGORIES.iter().map(|(id, emoji, label)| {
+                                        view! { <option value=*id>{format!("{} {}", emoji, label)}</option> }
                                     }).collect_view()
                                 }}
                             </select>
@@ -746,39 +845,58 @@ fn StoreView(
                         </label>
                     </div>
 
-                    <div class="grid3">
+                    <div class="grid2">
                         <label class="field">
-                            <span class="lbl">"Qty (units)"</span>
+                            <span class="lbl">"Quantity"</span>
                             <input
                                 inputmode="decimal"
-                                placeholder="3"
+                                placeholder=move || if new_qtyunit.get() == "pc" { "3" } else { "1.5" }
                                 prop:value=move || new_qty.get()
                                 on:input=move |ev| new_qty.set(event_target_value(&ev))
                             />
                         </label>
                         <label class="field">
-                            <span class="lbl">"1 unit (weight)"</span>
-                            <input
-                                inputmode="decimal"
-                                placeholder="90"
-                                prop:value=move || new_weight.get()
-                                on:input=move |ev| new_weight.set(event_target_value(&ev))
-                            />
-                        </label>
-                        <label class="field">
-                            <span class="lbl">"Weight unit"</span>
+                            <span class="lbl">"Unit"</span>
                             <select
                                 class="unit-select"
-                                prop:value=move || new_wunit.get()
-                                on:change=move |ev| new_wunit.set(event_target_value(&ev))
+                                prop:value=move || new_qtyunit.get()
+                                on:change=move |ev| new_qtyunit.set(event_target_value(&ev))
                             >
-                                <option value="g">"g"</option>
-                                <option value="kg">"kg"</option>
-                                <option value="oz">"oz"</option>
-                                <option value="lb">"lb"</option>
+                                <option value="pc">"pieces"</option>
+                                <option value="g">"grams (total)"</option>
+                                <option value="kg">"kg (total)"</option>
+                                <option value="l">"liters (total)"</option>
+                                <option value="ml">"mL (total)"</option>
                             </select>
                         </label>
                     </div>
+
+                    <Show when=move || new_qtyunit.get() == "pc">
+                        <div class="grid2">
+                            <label class="field">
+                                <span class="lbl">"1 unit (weight)"</span>
+                                <input
+                                    inputmode="decimal"
+                                    placeholder="90"
+                                    prop:value=move || new_weight.get()
+                                    on:input=move |ev| new_weight.set(event_target_value(&ev))
+                                />
+                            </label>
+                            <label class="field">
+                                <span class="lbl">"Weight unit"</span>
+                                <select
+                                    class="unit-select"
+                                    prop:value=move || new_wunit.get()
+                                    on:change=move |ev| new_wunit.set(event_target_value(&ev))
+                                >
+                                    <option value="g">"g"</option>
+                                    <option value="kg">"kg"</option>
+                                    <option value="oz">"oz"</option>
+                                    <option value="lb">"lb"</option>
+                                </select>
+                            </label>
+                        </div>
+                    </Show>
 
                     <div class="grid2">
                         <label class="field">
@@ -816,11 +934,9 @@ fn StoreView(
                         </label>
                     </div>
 
-                    <button class="add-btn" on:click=save_price>"Save price"</button>
+                    <button class="add-btn" on:click=save_price>"Save product & price"</button>
                 </div>
             </Show>
-
-            <button class="clear-btn" on:click=delete_store>"Delete this store"</button>
         </div>
     }
 }
@@ -854,19 +970,25 @@ fn ProductsView(
     });
 
     let summary_for = move |pid: u64| -> String {
+        let second = settings
+            .get_untracked()
+            .second_currency
+            .clone()
+            .unwrap_or_default();
         let rows = compute_ranking(
             &entries.get_untracked(),
             &stores.get_untracked(),
             &products.get_untracked(),
             &currencies.get_untracked(),
             &settings.get_untracked().main_currency,
+            &second,
             &[pid],
         );
         match rows.iter().find(|r| r.metric.is_some()) {
             Some(best) => {
                 let m = best.metric.unwrap();
                 let sym = symbol_of(&currencies.get_untracked(), &settings.get_untracked().main_currency);
-                let unit = if best.kg_mode { "/kg" } else { "each" };
+                let unit = metric_label(best.kg_mode, best.l_mode);
                 format!("from {}{} {} · {}", sym, fmt_price(m), unit, best.store_name)
             }
             None => "no prices yet".to_string(),
@@ -909,14 +1031,14 @@ fn ProductsView(
                     on:click=move |_| cat_filter.set(String::new())
                 >"All"</button>
                 {move || {
-                    domain::CATEGORIES.iter().map(|(id, emoji)| {
+                    domain::CATEGORIES.iter().map(|(id, emoji, label)| {
                         let cat = id.to_string();
                         let cat_cls = cat.clone();
                         view! {
                             <button
                                 class=move || if cat_filter.get() == cat_cls { "chip active" } else { "chip" }
                                 on:click=move |_| cat_filter.set(cat.clone())
-                            >{*emoji}</button>
+                            >{*emoji}" "{*label}</button>
                         }
                     }).collect_view()
                 }}
@@ -980,12 +1102,18 @@ fn ComparisonList(
     let ids_for_verdict = ids.clone();
 
     let ranking = Memo::new(move |_| {
+        let second = settings
+            .get()
+            .second_currency
+            .clone()
+            .unwrap_or_default();
         compute_ranking(
             &entries.get(),
             &stores.get(),
             &products.get(),
             &currencies.get(),
             &settings.get().main_currency,
+            &second,
             &ids_for_ranking,
         )
     });
@@ -1026,15 +1154,27 @@ fn ComparisonList(
                         })
                     }}
                     <span class="v-unit">
-                        {move || if verdict.get().map(|r| r.kg_mode).unwrap_or(false) { " /kg" } else { " each" }}
+                        {move || {
+                            verdict.get().map(|r| format!(" {}", metric_label(r.kg_mode, r.l_mode)))
+                                .unwrap_or_default()
+                        }}
                     </span>
                 </div>
                 {move || {
                     let v = verdict.get();
-                    let secondary = v.as_ref().and_then(|r| if r.kg_mode { r.per_unit } else { r.per_kg });
+                    let secondary = v.as_ref().and_then(|r| {
+                        if r.kg_mode {
+                            r.per_unit
+                        } else if r.l_mode {
+                            None
+                        } else {
+                            r.per_kg
+                        }
+                    });
                     match secondary {
                         Some(u) => {
-                            let unit = if v.map(|r| r.kg_mode).unwrap_or(false) { "each" } else { "/kg" };
+                            let kg = v.as_ref().map(|r| r.kg_mode).unwrap_or(false);
+                            let unit = if kg { "each" } else { "/kg" };
                             Some(view! { <div class="v-sub">{main_sym.get()}{fmt_price(u)}" "{unit}</div> })
                         }
                         None => None,
@@ -1047,7 +1187,8 @@ fn ComparisonList(
                         if max.is_finite() {
                             let save = max - best;
                             if save > 1e-6 {
-                                let unit = if verdict.get().map(|r| r.kg_mode).unwrap_or(false) { "/kg" } else { "each" };
+                                let v = verdict.get();
+                                let unit = v.map(|r| metric_label(r.kg_mode, r.l_mode)).unwrap_or("each");
                                 return Some(view! {
                                     <div class="v-save">
                                         {"Save "}{main_sym.get()}{fmt_price(save)}{" "}{unit}{" vs the priciest store"}
@@ -1116,6 +1257,10 @@ fn ComparisonList(
                                         <div class="rank-kg">{main_sym.get()}{fmt_price(k)}" /kg"</div>
                                         {r.per_unit.map(|u| view! { <div class="rank-unit">{main_sym.get()}{fmt_price(u)}" each"</div> })}
                                     }.into_any())
+                                } else if r.l_mode {
+                                    r.per_l.map(|v| view! {
+                                        <div class="rank-kg">{main_sym.get()}{fmt_price(v)}" /L"</div>
+                                    }.into_any())
                                 } else {
                                     r.per_unit.map(|u| view! {
                                         <div class="rank-kg">{main_sym.get()}{fmt_price(u)}" each"</div>
@@ -1137,6 +1282,9 @@ fn ComparisonList(
                             }}
                             {move || {
                                 r.orig_text.clone().map(|t| view! { <div class="rank-orig">{t}</div> })
+                            }}
+                            {move || {
+                                r.second_text.clone().map(|t| view! { <div class="rank-sec">{t}</div> })
                             }}
                         </div>
                     </div>
@@ -1177,9 +1325,23 @@ fn ProductView(
         nav.set(Nav::Products);
     };
 
+    let menu_open = RwSignal::new(false);
+    let toggle_menu = move |_| menu_open.set(!menu_open.get_untracked());
+
     view! {
         <div class="page">
-            <button class="back-btn" on:click=move |_| nav.set(Nav::Products)>"← Products"</button>
+            <div class="page-head">
+                <button class="back-btn" on:click=move |_| nav.set(Nav::Products)>"← Products"</button>
+                <button class="dots-btn" title="More options" on:click=toggle_menu>"⋯"</button>
+            </div>
+            <Show when=move || menu_open.get()>
+                <div class="menu-card">
+                    <button class="menu-item" on:click=move |_| {
+                        menu_open.set(false);
+                        delete_product(());
+                    }>"🗑 Delete this product"</button>
+                </div>
+            </Show>
             <h1 class="product-title">{move || product_line.get()}</h1>
 
             <ComparisonList
@@ -1193,8 +1355,6 @@ fn ProductView(
             />
 
             <div class="hint">"Add more prices from a store's page — the comparison updates automatically."</div>
-
-            <button class="clear-btn" on:click=delete_product>"Delete this product"</button>
         </div>
     }
 }
@@ -1386,6 +1546,28 @@ fn SettingsView(
                 prop:value=move || main()
                 on:change=move |ev| settings.update(|s| s.main_currency = event_target_value(&ev))
             >
+                {move || {
+                    currencies.get().iter().map(|c: &Currency| {
+                        view! { <option value=c.code.clone()>{c.symbol.clone()}" "{c.code.clone()}</option> }
+                    }).collect_view()
+                }}
+            </select>
+
+            <h2 class="section">"Second currency"</h2>
+            <div class="hint">
+                "Optional — converted prices are also shown in this currency, right next to the main one. Useful to keep a feel for prices from back home (e.g. see EUR while shopping in AUD)."
+            </div>
+            <select
+                class="unit-select wide main-select"
+                prop:value=move || settings.get().second_currency.clone().unwrap_or_default()
+                on:change=move |ev| {
+                    let v = event_target_value(&ev);
+                    settings.update(|s| {
+                        s.second_currency = if v.is_empty() { None } else { Some(v) };
+                    });
+                }
+            >
+                <option value="">"None"</option>
                 {move || {
                     currencies.get().iter().map(|c: &Currency| {
                         view! { <option value=c.code.clone()>{c.symbol.clone()}" "{c.code.clone()}</option> }

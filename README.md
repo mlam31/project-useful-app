@@ -9,22 +9,20 @@ black & white UI designed for OLED screens.
 
 ## What it does
 
-For each store you enter any combination of:
+The app is a small **database**: Stores → Products → Prices.
 
-| Input | Used for |
-|---|---|
-| **Price / kg** | direct normalized comparison |
-| **Price / unit** | per-unit price; also derives /kg when the unit weight is known |
-| **Weight** of one unit (g, kg, oz, lb) | converts between the two pricing modes |
-| **Found on** (date) | prices and promos are temporary — you record when you saw it |
-| **Promo** flag | remember that this price was a promotion |
-| **Address** (typed, or pinned with 📍 GPS) | optional; tap the store name in the results to open it in Apple Maps |
-
-The app normalizes every offer to price-per-kg (deriving it from
-`unit price ÷ unit weight` when needed), ranks all stores cheapest-first,
-highlights the winner and shows how much you save per kg versus the priciest
-store. It also derives a per-unit price (`kg price × unit weight`) when you
-only know the kg price.
+- **🏪 Stores tab** — every store you add (with optional address, pinnable via
+  📍 GPS). Open a store to see all products recorded there, filter them, and
+  **add prices**: product name (autocomplete searches your existing database),
+  category (fruit / vegetable / bottle / other), **total price**,
+  **quantity** (6-pack = 6), weight of one unit (g/kg/oz/lb, optional),
+  **date** you found it and a **promo** flag — prices are temporary.
+- **🔍 Products tab** — searchable list of every product in your database,
+  each showing its current best price. Open a product to compare it across
+  all stores: everything is normalized to a **price per kg** (derived from
+  `price ÷ quantity × unit weight`) or per unit, cheapest first, winner
+  highlighted, savings per kg shown. Only the most recent price per store
+  competes, so old records don't distort the comparison.
 
 All data is stored locally on your device (localStorage). Nothing is sent
 anywhere, except the optional 📍 address lookup, which uses OpenStreetMap's
@@ -95,9 +93,10 @@ fallback.
 
 ```
 src/
-  domain.rs   — pure logic: parsing, normalization, best-offer ranking (unit-tested)
-  storage.rs  — localStorage persistence (offers + product name)
-  main.rs     — Leptos UI: input cards, verdict, ranking list
+  domain.rs   — pure logic: Store / Product / PriceEntry, normalization,
+                latest-per-store rule, ranking (unit-tested)
+  storage.rs  — localStorage persistence (stores, products, entries)
+  main.rs     — Leptos UI: Stores / Store / Products / Product views + tab bar
   lib.rs      — exposes domain for integration tests
 public/       — PWA manifest, service worker, app icons
 index.html    — shell + all styling (black & white, OLED)

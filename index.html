@@ -35,8 +35,10 @@
         main {
             max-width: 480px;
             margin: 0 auto;
-            padding: calc(var(--safe-top) + 14px) 16px calc(var(--safe-bottom) + 24px);
+            padding: calc(var(--safe-top) + 14px) 16px calc(var(--safe-bottom) + 110px);
         }
+
+        .page { min-height: 60vh; }
 
         header h1 {
             font-size: 22px;
@@ -44,6 +46,46 @@
             letter-spacing: -0.3px;
             margin: 0 0 14px;
         }
+
+        .section {
+            font-size: 13px;
+            font-weight: 700;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin: 18px 0 10px;
+        }
+
+        .back-btn {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            padding: 4px 0 10px;
+            cursor: pointer;
+        }
+        .back-btn:active { opacity: 0.6; }
+
+        .product-title, .store-title {
+            font-size: 21px;
+            font-weight: 700;
+            margin: 0 0 12px;
+        }
+        .store-title {
+            display: block;
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #222;
+            border-radius: 0;
+            padding: 2px 0 8px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        h1.product-title { margin: 4px 0 14px; }
 
         /* ---------- inputs ---------- */
         input, select {
@@ -72,10 +114,132 @@
             text-align: center;
         }
 
-        .product-input {
+        .product-input, .search-input {
             margin-bottom: 14px;
             font-weight: 600;
         }
+        .search-input { font-weight: 400; }
+
+        /* ---------- inline add (store name / address) ---------- */
+        .add-inline {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .add-inline input { flex: 1; min-width: 0; }
+        .mini-add {
+            flex-shrink: 0;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 0 16px;
+            cursor: pointer;
+        }
+        .mini-add:active { background: #ddd; }
+
+        /* ---------- tab bar ---------- */
+        .tabbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            max-width: 480px;
+            margin: 0 auto;
+            display: flex;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.92);
+            border-top: 1px solid #222;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 6px 10px calc(var(--safe-bottom) + 6px);
+            z-index: 10;
+        }
+        .tab {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #777;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 9px 0;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+        .tab.active { color: #fff; background: #161616; }
+
+        /* ---------- store & product list rows ---------- */
+        .store-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .store-row:active { background: #161616; }
+        .s-info { min-width: 0; }
+        .s-name { font-weight: 600; font-size: 16px; }
+        .s-sub {
+            font-size: 12px;
+            color: #888;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-variant-numeric: tabular-nums;
+        }
+        .chev { color: #555; font-size: 20px; flex-shrink: 0; }
+
+        /* ---------- entry rows (products inside a store) ---------- */
+        .entry-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }
+        .e-info { min-width: 0; flex: 1; }
+        .e-name { font-weight: 600; font-size: 15px; }
+        .e-meta { font-size: 11px; color: #777; margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+        .e-prices { text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+        .e-per { font-size: 13px; color: #bbb; }
+        .e-sub { font-size: 15px; font-weight: 700; color: #fff; }
+
+        .icon-btn.small { width: 32px; height: 32px; font-size: 13px; border-radius: 8px; }
+
+        /* ---------- suggestion chips ---------- */
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .chip {
+            background: #000;
+            border: 1px solid #333;
+            color: #ccc;
+            font-family: inherit;
+            font-size: 13px;
+            border-radius: 999px;
+            padding: 5px 12px;
+            cursor: pointer;
+        }
+        .chip:active { border-color: #fff; color: #fff; }
+
+        .grid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        select.unit-select.wide { width: 100%; text-align: left; }
 
         /* ---------- verdict ---------- */
         .verdict {

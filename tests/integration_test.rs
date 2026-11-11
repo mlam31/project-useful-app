@@ -1,82 +1,78 @@
-use useful_app::domain::{best, quote, weight_to_kg, Best, Offer, Quote};
+use useful_app::domain::{
+    best_metric, entry_quote, latest_per_store, parse_number, weight_to_kg, Best, PriceEntry,
+};
 
-fn offer(id: u64, store: &str, unit_price: &str, kg_price: &str, weight: &str, unit: &str) -> Offer {
-    Offer {
+fn entry(id: u64, store: u64, price: &str, qty: &str, weight: &str, unit: &str) -> PriceEntry {
+    PriceEntry {
         id,
-        store: store.into(),
-        address: None,
+        store_id: store,
+        product_id: 1,
+        price: price.into(),
+        quantity: qty.into(),
+        unit_weight: weight.into(),
+        weight_unit: unit.into(),
         promo: false,
         date: "2026-11-11".into(),
-        unit_price: unit_price.into(),
-        kg_price: kg_price.into(),
-        weight: weight.into(),
-        weight_unit: unit.into(),
     }
 }
 
-fn quotes(offers: &[Offer]) -> Vec<Quote> {
-    offers.iter().map(quote).collect()
-}
-
-/// The core scenario: one store sells per unit (weight known),
-/// another sells per kg — the app must normalize and pick the winner.
+/// The core scenario: produce priced per unit with a known weight must be
+/// comparable on a /kg basis with store prices given per kg.
 #[test]
-fn per_unit_store_vs_per_kg_store() {
-    // A: 0.50 per apple @ 200 g -> 2.50 /kg ; B: 2.99 /kg
-    let offers = vec![
-        offer(1, "Green Grocer", "0.50", "", "200", "g"),
-        offer(2, "SuperMart", "", "2.99", "", ""),
-    ];
-    assert_eq!(best(&quotes(&offers)), Best::Winner(0));
+fn unit_price_with_weight_normalizes_to_per_kg() {
+    // 0.50 for 1 apple of 200 g -> 2.50 /kg
+    let q = entry_quote(&entry(1, 10, "0.50", "1", "200", "g"));
+    assert_eq!(q.per_unit, Some(0.50));
+    assert!((q.per_kg.unwrap() - 2.5).abs() < 1e-9);
 }
 
 #[test]
-fn per_kg_store_beats_expensive_per_unit_store() {
-    // A: 0.40 per apple @ 150 g -> 2.67 /kg ; B: 2.40 /kg
-    let offers = vec![
-        offer(1, "A", "0.40", "", "150", "g"),
-        offer(2, "B", "", "2.40", "", ""),
-    ];
-    assert_eq!(best(&quotes(&offers)), Best::Winner(1));
+fn multipack_divides_per_unit() {
+    // 4.99 for a 6-pack -> 0.83 each, no /kg without weight
+    let q = entry_quote(&entry(1, 10, "4.99", "6", "", ""));
+    assert!((q.per_unit.unwrap() - 4.99 / 6.0).abs() < 1e-9);
+    assert_eq!(q.per_kg, None);
 }
 
 #[test]
-fn equal_prices_are_tied() {
-    let offers = vec![
-        offer(1, "A", "", "3.00", "", ""),
-        offer(2, "B", "1.50", "", "500", "g"), // 3.00 /kg
-    ];
-    let q = quotes(&offers);
-    assert_eq!(best(&q), Best::Tied(0));
-    assert!((q[0].per_kg.unwrap() - q[1].per_kg.unwrap()).abs() < 1e-6);
+fn weight_multiplies_by_quantity_for_per_kg() {
+    // 4.99 for 6 units of 1 kg each -> 0.83 /kg
+    let q = entry_quote(&entry(1, 10, "4.99", "6", "1", "kg"));
+    assert!((q.per_kg.unwrap() - 4.99 / 6.0).abs() < 1e-9);
 }
 
 #[test]
-fn offers_without_normalizable_price_are_ignored() {
-    // A has no weight -> cannot be compared on /kg basis
-    let offers = vec![
-        offer(1, "A", "0.50", "", "", ""),
-        offer(2, "B", "", "2.00", "", ""),
-    ];
-    assert_eq!(best(&quotes(&offers)), Best::Winner(1));
+fn best_metric_picks_lowest() {
+    assert_eq!(best_metric(&[Some(2.5), Some(2.99), Some(2.4)]), Best::Winner(2));
+    assert_eq!(best_metric(&[Some(3.0), None, Some(3.0)]), Best::Tied(0));
+    assert_eq!(best_metric(&[None, None]), Best::None);
 }
 
+/// Older price records in the same store must not compete with the
+/// current one — only the latest price per store counts.
 #[test]
-fn nothing_comparable_at_all() {
-    let offers = vec![
-        offer(1, "A", "0.50", "", "", ""),
-        offer(2, "B", "0.60", "", "", ""),
-    ];
-    assert_eq!(best(&quotes(&offers)), Best::None);
+fn latest_per_store_keeps_newest() {
+    let mut old = entry(1, 10, "2.99", "1", "", "");
+    old.date = "2026-11-01".into();
+    let mut new = entry(2, 10, "1.99", "1", "", "");
+    new.promo = true;
+    let other = entry(3, 20, "2.50", "1", "", "");
+
+    let out = latest_per_store(&[old, new, other]);
+    assert_eq!(out.len(), 2);
+    assert!(out.iter().any(|e| e.id == 2));
+    assert!(out.iter().any(|e| e.id == 3));
 }
 
 #[test]
 fn comma_decimals_and_currency_symbols_parse() {
-    let o = offer(1, "A", "0,50", "$2.99", "250", "g");
-    let q = quote(&o);
-    assert_eq!(q.per_unit, Some(0.50));
-    assert_eq!(q.per_kg, Some(2.99));
-    assert!((q.per_kg.unwrap() - 2.99).abs() < 1e-9);
+    assert_eq!(parse_number("1,29"), Some(1.29));
+    assert_eq!(parse_number("$1.29"), Some(1.29));
+    assert_eq!(parse_number(" 2,49 € "), Some(2.49));
+    assert_eq!(parse_number(""), None);
+    assert_eq!(parse_number("abc"), None);
+    assert_eq!(parse_number("0"), None);
+    assert_eq!(parse_number("1.2.3"), None);
 }
 
 #[test]

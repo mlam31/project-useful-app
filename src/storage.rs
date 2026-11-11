@@ -1,41 +1,52 @@
-//! Persistence of offers + product name in the browser's localStorage.
+//! Persistence of stores, products and price entries in localStorage.
 
-use useful_app::domain::Offer;
+use useful_app::domain::{PriceEntry, Product, Store};
+use web_sys::Storage;
 
-const OFFERS_KEY: &str = "price-compare.offers";
-const PRODUCT_KEY: &str = "price-compare.product";
+const STORES_KEY: &str = "pc.stores";
+const PRODUCTS_KEY: &str = "pc.products";
+const ENTRIES_KEY: &str = "pc.entries";
 
-fn local_storage() -> Option<web_sys::Storage> {
+fn local_storage() -> Option<Storage> {
     web_sys::window().and_then(|w| w.local_storage().ok().flatten())
 }
 
-pub fn load_offers() -> Vec<Offer> {
+fn load<T: serde::de::DeserializeOwned>(key: &str) -> Vec<T> {
     let Some(ls) = local_storage() else {
         return Vec::new();
     };
-    ls.get_item(OFFERS_KEY)
+    ls.get_item(key)
         .ok()
         .flatten()
-        .and_then(|json| serde_json::from_str::<Vec<Offer>>(&json).ok())
+        .and_then(|json| serde_json::from_str::<Vec<T>>(&json).ok())
         .unwrap_or_default()
 }
 
-pub fn save_offers(offers: &[Offer]) {
+fn save<T: serde::Serialize>(key: &str, value: &[T]) {
     if let Some(ls) = local_storage() {
-        if let Ok(json) = serde_json::to_string(offers) {
-            let _ = ls.set_item(OFFERS_KEY, &json);
+        if let Ok(json) = serde_json::to_string(value) {
+            let _ = ls.set_item(key, &json);
         }
     }
 }
 
-pub fn load_product() -> String {
-    local_storage()
-        .and_then(|ls| ls.get_item(PRODUCT_KEY).ok().flatten())
-        .unwrap_or_default()
+pub fn load_stores() -> Vec<Store> {
+    load(STORES_KEY)
+}
+pub fn save_stores(stores: &[Store]) {
+    save(STORES_KEY, stores);
 }
 
-pub fn save_product(name: &str) {
-    if let Some(ls) = local_storage() {
-        let _ = ls.set_item(PRODUCT_KEY, name);
-    }
+pub fn load_products() -> Vec<Product> {
+    load(PRODUCTS_KEY)
+}
+pub fn save_products(products: &[Product]) {
+    save(PRODUCTS_KEY, products);
+}
+
+pub fn load_entries() -> Vec<PriceEntry> {
+    load(ENTRIES_KEY)
+}
+pub fn save_entries(entries: &[PriceEntry]) {
+    save(ENTRIES_KEY, entries);
 }

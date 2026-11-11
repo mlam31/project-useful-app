@@ -1,11 +1,12 @@
-//! Price Compare — compare fruit/vegetable prices across stores.
+//! Price Compare — a small database of stores → products → prices,
+//! with fair per-kg / per-unit comparison across stores.
 //! Black & white OLED-friendly PWA built with Leptos (CSR).
 
 mod storage;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use useful_app::domain::{self, Offer};
+use useful_app::domain::{self, PriceEntry, Product, Store};
 use wasm_bindgen::prelude::*;
 use web_sys::PositionOptions;
 
@@ -43,68 +44,108 @@ fn percent_encode(s: &str) -> String {
     out
 }
 
+fn next_id(ids: impl Iterator<Item = u64>) -> u64 {
+    ids.max().unwrap_or(0) + 1
+}
+
+fn update_store(stores: RwSignal<Vec<Store>>, id: u64, f: impl FnOnce(&mut Store)) {
+    stores.update(|v| {
+        if let Some(s) = v.iter_mut().find(|s| s.id == id) {
+            f(s);
+        }
+    });
+}
+
+// ---------------------------------------------------------------- navigation
+
+#[derive(Clone, Copy, PartialEq)]
+enum Nav {
+    Stores,
+    StoreDetail(u64),
+    Products,
+    ProductDetail(u64),
+}
+
 // ---------------------------------------------------------------- ranking
 
 #[derive(Clone, Debug, PartialEq)]
-struct RankItem {
-    id: u64,
-    store: String,
-    address: Option<String>,
+struct RankRow {
+    entry_id: u64,
+    store_id: u64,
+    store_name: String,
     promo: bool,
     date: String,
-    per_kg: Option<f64>,
     per_unit: Option<f64>,
-    /// How much more expensive per kg than the winner (0 for the winner).
+    per_kg: Option<f64>,
+    /// The value used for ranking: per-kg when any entry has a weight, else per-unit.
+    metric: Option<f64>,
     delta: Option<f64>,
     best: bool,
+    kg_mode: bool,
 }
 
-fn compute_ranking(items: &[Offer]) -> Vec<RankItem> {
-    let quotes: Vec<domain::Quote> = items.iter().map(domain::quote).collect();
-
-    let mut rows: Vec<RankItem> = items
+/// Rank the prices of ONE product across stores.
+/// Only the most recent entry per store competes; stores without a
+/// comparable metric go last.
+fn compute_ranking(entries: &[PriceEntry], stores: &[Store], product_id: u64) -> Vec<RankRow> {
+    let filtered: Vec<PriceEntry> = entries
         .iter()
-        .enumerate()
-        .map(|(i, o)| {
-            let q = quotes[i];
-            RankItem {
-                id: o.id,
-                store: if o.store.trim().is_empty() {
-                    format!("Store {}", i + 1)
-                } else {
-                    o.store.trim().to_string()
-                },
-                address: o.address.clone().filter(|a| !a.trim().is_empty()),
-                promo: o.promo,
-                date: o.date.clone(),
-                per_kg: q.per_kg,
+        .filter(|e| e.product_id == product_id)
+        .cloned()
+        .collect();
+    let latest = domain::latest_per_store(&filtered);
+
+    let mut rows: Vec<RankRow> = latest
+        .iter()
+        .map(|e| {
+            let q = domain::entry_quote(e);
+            let store_name = stores
+                .iter()
+                .find(|s| s.id == e.store_id)
+                .map(|s| s.name.trim().to_string())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| format!("Store #{}", e.store_id));
+            RankRow {
+                entry_id: e.id,
+                store_id: e.store_id,
+                store_name,
+                promo: e.promo,
+                date: e.date.clone(),
                 per_unit: q.per_unit,
+                per_kg: q.per_kg,
+                metric: None,
                 delta: None,
                 best: false,
+                kg_mode: false,
             }
         })
         .collect();
 
-    // Comparable offers (price per kg known) first, cheapest on top.
-    rows.sort_by(|a, b| match (a.per_kg, b.per_kg) {
-        (Some(x), Some(y)) => x
-            .partial_cmp(&y)
-            .unwrap_or(std::cmp::Ordering::Equal),
+    let kg_mode = rows.iter().any(|r| r.per_kg.is_some());
+    for r in rows.iter_mut() {
+        r.kg_mode = kg_mode;
+        r.metric = if kg_mode { r.per_kg } else { r.per_unit };
+    }
+
+    // Cheapest first; entries without a metric at the end.
+    rows.sort_by(|a, b| match (a.metric, b.metric) {
+        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => std::cmp::Ordering::Equal,
     });
 
-    let min = match domain::best(&quotes) {
-        domain::Best::Winner(i) | domain::Best::Tied(i) => quotes[i].per_kg,
+    let metrics: Vec<Option<f64>> = rows.iter().map(|r| r.metric).collect();
+    let min = match domain::best_metric(&metrics) {
+        domain::Best::Winner(i) | domain::Best::Tied(i) => rows[i].metric,
         domain::Best::None => None,
     };
 
     if let Some(min) = min {
         for r in rows.iter_mut() {
-            if let Some(k) = r.per_kg {
-                r.delta = Some(k - min);
-                r.best = (k - min).abs() <= min * 1e-6;
+            if let Some(m) = r.metric {
+                r.delta = Some(m - min);
+                r.best = (m - min).abs() <= min * 1e-6;
             }
         }
     }
@@ -132,13 +173,9 @@ async fn reverse_geocode(lat: f64, lon: f64) -> String {
     }
 }
 
-/// Ask the browser for the current position and write the resolved
-/// address into the offer with the given id.
-fn pin_address(
-    offers: RwSignal<Vec<RwSignal<Offer>>>,
-    id: u64,
-    pinning: RwSignal<bool>,
-) {
+/// Ask the browser for the current position and hand the resolved address
+/// to `apply` (which writes it wherever needed).
+fn pin_address(apply: impl Fn(String) + 'static, pinning: RwSignal<bool>) {
     let Some(window) = web_sys::window() else {
         return;
     };
@@ -157,11 +194,7 @@ fn pin_address(
         let lon = coords.longitude();
         spawn_local(async move {
             let addr = reverse_geocode(lat, lon).await;
-            offers.update(|v| {
-                if let Some(sig) = v.iter().find(|s| s.get_untracked().id == id) {
-                    sig.update(|o| o.address = Some(addr));
-                }
-            });
+            apply(addr);
             pinning.set(false);
         });
     });
@@ -181,248 +214,591 @@ fn pin_address(
     on_err.forget();
 }
 
-// ---------------------------------------------------------------- offer card
+// ---------------------------------------------------------------- tab bar
 
 #[component]
-fn OfferCard(
-    offer: RwSignal<Offer>,
-    offers: RwSignal<Vec<RwSignal<Offer>>>,
-) -> impl IntoView {
-    let pinning = RwSignal::new(false);
-    let id = offer.get_untracked().id;
-
-    let remove = move |_| {
-        offers.update(|v| v.retain(|s| s.get_untracked().id != id));
-    };
-    let pin = move |_| pin_address(offers, id, pinning);
-
-    let set_store = move |v: String| offer.update(|o| o.store = v);
-    let set_address = move |v: String| offer.update(|o| o.address = Some(v));
-    let set_kg_price = move |v: String| offer.update(|o| o.kg_price = v);
-    let set_unit_price = move |v: String| offer.update(|o| o.unit_price = v);
-    let set_weight = move |v: String| offer.update(|o| o.weight = v);
-    let set_weight_unit = move |v: String| offer.update(|o| o.weight_unit = v);
-    let set_date = move |v: String| offer.update(|o| o.date = v);
-    let set_promo = move |v: bool| offer.update(|o| o.promo = v);
+fn TabBar(nav: RwSignal<Nav>) -> impl IntoView {
+    let stores_active = move || matches!(nav.get(), Nav::Stores | Nav::StoreDetail(_));
+    let products_active = move || matches!(nav.get(), Nav::Products | Nav::ProductDetail(_));
 
     view! {
-        <div class="card">
-            <div class="row">
+        <nav class="tabbar">
+            <button
+                class=move || if stores_active() { "tab active" } else { "tab" }
+                on:click=move |_| nav.set(Nav::Stores)
+            >
+                "🏪 Stores"
+            </button>
+            <button
+                class=move || if products_active() { "tab active" } else { "tab" }
+                on:click=move |_| nav.set(Nav::Products)
+            >
+                "🔍 Products"
+            </button>
+        </nav>
+    }
+}
+
+// ---------------------------------------------------------------- stores view
+
+#[component]
+fn StoresView(
+    stores: RwSignal<Vec<Store>>,
+    entries: RwSignal<Vec<PriceEntry>>,
+    nav: RwSignal<Nav>,
+) -> impl IntoView {
+    let search = RwSignal::new(String::new());
+    let new_name = RwSignal::new(String::new());
+
+    let filtered = Memo::new(move |_| {
+        let q = search.get().trim().to_lowercase();
+        let mut list: Vec<Store> = stores
+            .get()
+            .into_iter()
+            .filter(|st| q.is_empty() || st.name.to_lowercase().contains(&q))
+            .collect();
+        list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        list
+    });
+
+    let add_store = move |_| {
+        let name = new_name.get_untracked().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        let id = next_id(stores.get_untracked().iter().map(|s| s.id));
+        stores.update(|v| v.push(Store { id, name, address: None }));
+        new_name.set(String::new());
+    };
+
+    view! {
+        <div class="page">
+            <header><h1>"🏪 Stores"</h1></header>
+
+            <input
+                class="search-input"
+                placeholder="Search stores"
+                prop:value=move || search.get()
+                on:input=move |ev| search.set(event_target_value(&ev))
+            />
+
+            <div class="add-inline">
                 <input
-                    class="store-input"
-                    placeholder="Store name"
-                    prop:value=move || offer.get().store
-                    on:input=move |ev| set_store(event_target_value(&ev))
+                    placeholder="New store name"
+                    prop:value=move || new_name.get()
+                    on:input=move |ev| new_name.set(event_target_value(&ev))
                 />
-                <button class="icon-btn" title="Remove this store" on:click=remove>
-                    "✕"
-                </button>
+                <button class="mini-add" on:click=add_store>"+ Add"</button>
             </div>
 
-            <div class="row">
+            <Show when=move || stores.get().is_empty()>
+                <div class="hint">
+                    "Add your first store — then record the products you buy there."
+                </div>
+            </Show>
+
+            <For
+                each=move || filtered.get()
+                key=|st| st.id
+                children={move |st: Store| {
+                    let sid = st.id;
+                    view! {
+                        <div class="store-row" on:click=move |_| nav.set(Nav::StoreDetail(sid))>
+                            <div class="s-info">
+                                <div class="s-name">{st.name.clone()}</div>
+                                <div class="s-sub">
+                                    {move || {
+                                        let addr = stores.get().iter().find(|s| s.id == sid)
+                                            .and_then(|s| s.address.clone())
+                                            .filter(|a| !a.trim().is_empty());
+                                        let n = entries.get().iter()
+                                            .filter(|e| e.store_id == sid)
+                                            .map(|e| e.product_id)
+                                            .collect::<std::collections::HashSet<_>>()
+                                            .len();
+                                        let products_txt = match n {
+                                            0 => "no products yet".to_string(),
+                                            1 => "1 product".to_string(),
+                                            n => format!("{} products", n),
+                                        };
+                                        match addr {
+                                            Some(a) => format!("{} · {}", products_txt, a),
+                                            None => products_txt,
+                                        }
+                                    }}
+                                </div>
+                            </div>
+                            <div class="chev">"›"</div>
+                        </div>
+                    }
+                }}
+            />
+        </div>
+    }
+}
+
+// ---------------------------------------------------------------- store detail
+
+#[component]
+fn StoreView(
+    store_id: u64,
+    stores: RwSignal<Vec<Store>>,
+    products: RwSignal<Vec<Product>>,
+    entries: RwSignal<Vec<PriceEntry>>,
+    nav: RwSignal<Nav>,
+) -> impl IntoView {
+    // ---- existing entries for this store
+    let filter = RwSignal::new(String::new());
+
+    let rows = Memo::new(move |_| {
+        let q = filter.get().trim().to_lowercase();
+        let prods = products.get();
+        let mut list: Vec<(PriceEntry, String, String)> = entries
+            .get()
+            .iter()
+            .filter(|e| e.store_id == store_id)
+            .map(|e| {
+                let p = prods.iter().find(|p| p.id == e.product_id);
+                (
+                    e.clone(),
+                    p.map(|p| p.name.clone()).unwrap_or_else(|| "?".into()),
+                    p.map(|p| p.category.clone()).unwrap_or_else(|| "other".into()),
+                )
+            })
+            .filter(|(_, name, _)| q.is_empty() || name.to_lowercase().contains(&q))
+            .collect();
+        list.sort_by(|a, b| {
+            a.1.to_lowercase()
+                .cmp(&b.1.to_lowercase())
+                .then(b.0.date.cmp(&a.0.date))
+                .then(b.0.id.cmp(&a.0.id))
+        });
+        list
+    });
+
+    let delete_entry = move |entry_id: u64| {
+        entries.update(|v| v.retain(|e| e.id != entry_id));
+    };
+
+    // ---- add price form
+    let new_product = RwSignal::new(String::new());
+    let new_cat = RwSignal::new("other".to_string());
+    let new_price = RwSignal::new(String::new());
+    let new_qty = RwSignal::new("1".to_string());
+    let new_weight = RwSignal::new(String::new());
+    let new_wunit = RwSignal::new("g".to_string());
+    let new_promo = RwSignal::new(false);
+    let new_date = RwSignal::new(today_iso());
+
+    let suggestions = Memo::new(move |_| {
+        let t = new_product.get().trim().to_lowercase();
+        if t.is_empty() {
+            Vec::new()
+        } else {
+            products
+                .get()
+                .iter()
+                .filter(|p| p.name.to_lowercase().contains(&t))
+                .take(6)
+                .cloned()
+                .collect()
+        }
+    });
+
+    let save_price = move |_| {
+        let name = new_product.get_untracked().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+
+        // Find the product in the database, or create it.
+        let pid = products
+            .get_untracked()
+            .iter()
+            .find(|p| p.name.trim().eq_ignore_ascii_case(&name))
+            .map(|p| p.id)
+            .unwrap_or_else(|| {
+                let id = next_id(products.get_untracked().iter().map(|p| p.id));
+                let category = new_cat.get_untracked();
+                products.update(|v| v.push(Product { id, name: name.clone(), category }));
+                id
+            });
+
+        let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
+        let mut entry = PriceEntry::new(eid, store_id, pid);
+        entry.price = new_price.get_untracked();
+        let qty = new_qty.get_untracked();
+        entry.quantity = if qty.trim().is_empty() { "1".to_string() } else { qty };
+        entry.unit_weight = new_weight.get_untracked();
+        entry.weight_unit = new_wunit.get_untracked();
+        entry.promo = new_promo.get_untracked();
+        entry.date = new_date.get_untracked();
+        entries.update(|v| v.push(entry));
+
+        // Reset the form (keep the date, it usually stays "today").
+        new_product.set(String::new());
+        new_cat.set("other".to_string());
+        new_price.set(String::new());
+        new_qty.set("1".to_string());
+        new_weight.set(String::new());
+        new_promo.set(false);
+    };
+
+    // ---- store header
+    let pinning = RwSignal::new(false);
+    let pin = move |_| {
+        pin_address(
+            move |addr| update_store(stores, store_id, move |s| s.address = Some(addr)),
+            pinning,
+        );
+    };
+
+    let delete_store = move |_| {
+        stores.update(|v| v.retain(|s| s.id != store_id));
+        entries.update(|v| v.retain(|e| e.store_id != store_id));
+        nav.set(Nav::Stores);
+    };
+
+    view! {
+        <div class="page">
+            <button class="back-btn" on:click=move |_| nav.set(Nav::Stores)>"← Stores"</button>
+
+            <input
+                class="store-title"
+                placeholder="Store name"
+                prop:value=move || stores.get().iter().find(|s| s.id == store_id).map(|s| s.name.clone()).unwrap_or_default()
+                on:input=move |ev| update_store(stores, store_id, move |s| s.name = event_target_value(&ev))
+            />
+
+            <div class="add-inline">
                 <input
                     class="addr-input"
                     placeholder="Address (optional)"
-                    prop:value=move || offer.get().address.clone().unwrap_or_default()
-                    on:input=move |ev| set_address(event_target_value(&ev))
+                    prop:value=move || stores.get().iter().find(|s| s.id == store_id).and_then(|s| s.address.clone()).unwrap_or_default()
+                    on:input=move |ev| update_store(stores, store_id, move |s| s.address = Some(event_target_value(&ev)))
                 />
-                <button class="icon-btn" title="Use my current location" on:click=pin>
-                    "📍"
-                </button>
+                <button class="icon-btn" title="Use my current location" on:click=pin>"📍"</button>
             </div>
             <Show when=move || pinning.get()>
                 <div class="hint">"Locating…"</div>
             </Show>
 
-            <div class="grid3">
-                <label class="field">
-                    <span class="lbl">"Price / kg"</span>
-                    <input
-                        inputmode="decimal"
-                        placeholder="4.99"
-                        prop:value=move || offer.get().kg_price
-                        on:input=move |ev| set_kg_price(event_target_value(&ev))
-                    />
-                </label>
-                <label class="field">
-                    <span class="lbl">"Price / unit"</span>
-                    <input
-                        inputmode="decimal"
-                        placeholder="0.89"
-                        prop:value=move || offer.get().unit_price
-                        on:input=move |ev| set_unit_price(event_target_value(&ev))
-                    />
-                </label>
-                <label class="field">
-                    <span class="lbl">"Weight"</span>
-                    <div class="weight-row">
+            // ---- recorded products
+            <h2 class="section">"Products recorded here"</h2>
+            <input
+                class="search-input"
+                placeholder="Filter products"
+                prop:value=move || filter.get()
+                on:input=move |ev| filter.set(event_target_value(&ev))
+            />
+
+            <Show when=move || rows.get().is_empty()>
+                <div class="hint">"No prices recorded yet. Add the first one below."</div>
+            </Show>
+
+            <For
+                each=move || rows.get()
+                key=|row| row.0.id
+                children={move |row: (PriceEntry, String, String)| {
+                    let entry = row.0;
+                    let eid = entry.id;
+                    let quote = domain::entry_quote(&entry);
+                    let emoji = domain::category_emoji(&row.2);
+                    let qty = domain::parse_number(&entry.quantity).unwrap_or(1.0);
+                    let price_txt = if qty != 1.0 {
+                        format!("{} × {}", entry.price.trim(), qty)
+                    } else {
+                        entry.price.trim().to_string()
+                    };
+                    let sub = match quote.per_kg {
+                        Some(k) => format!(
+                            "{} each · {} /kg",
+                            fmt_price(quote.per_unit.unwrap_or(0.0)),
+                            fmt_price(k)
+                        ),
+                        None => match quote.per_unit {
+                            Some(u) => format!("{} each", fmt_price(u)),
+                            None => "—".to_string(),
+                        },
+                    };
+                    view! {
+                        <div class="entry-row">
+                            <div class="e-info">
+                                <div class="e-name">{emoji}" "{row.1}</div>
+                                <div class="e-meta">
+                                    {entry.date.clone()}
+                                    {move || {
+                                        if entry.promo { Some(view! { <span class="promo-badge">"PROMO"</span> }) } else { None }
+                                    }}
+                                </div>
+                            </div>
+                            <div class="e-prices">
+                                <div class="e-sub">{price_txt}</div>
+                                <div class="e-per">{sub}</div>
+                            </div>
+                            <button class="icon-btn small" title="Delete this price" on:click=move |_| delete_entry(eid)>"✕"</button>
+                        </div>
+                    }
+                }}
+            />
+
+            // ---- add price card
+            <h2 class="section">"Add a price"</h2>
+            <div class="card">
+                <input
+                    class="store-input"
+                    placeholder="Product (e.g. Apples, Bottle of water)"
+                    prop:value=move || new_product.get()
+                    on:input=move |ev| new_product.set(event_target_value(&ev))
+                />
+                <Show when=move || !suggestions.get().is_empty()>
+                    <div class="chips">
+                        <For
+                            each=move || suggestions.get()
+                            key=|p| p.id
+                            children={move |p: Product| {
+                                view! {
+                                    <button class="chip" on:click=move |_| new_product.set(p.name.clone())>
+                                        {domain::category_emoji(&p.category)}" "{p.name.clone()}
+                                    </button>
+                                }
+                            }}
+                        />
+                    </div>
+                </Show>
+
+                <div class="grid2">
+                    <label class="field">
+                        <span class="lbl">"Category"</span>
+                        <select
+                            class="unit-select wide"
+                            prop:value=move || new_cat.get()
+                            on:change=move |ev| new_cat.set(event_target_value(&ev))
+                        >
+                            {domain::CATEGORIES.iter().map(|(id, label)| {
+                                view! { <option value=*id>{*label}</option> }
+                            }).collect_view()}
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span class="lbl">"Price (total)"</span>
+                        <input
+                            inputmode="decimal"
+                            placeholder="4.99"
+                            prop:value=move || new_price.get()
+                            on:input=move |ev| new_price.set(event_target_value(&ev))
+                        />
+                    </label>
+                </div>
+
+                <div class="grid3">
+                    <label class="field">
+                        <span class="lbl">"Qty (units)"</span>
+                        <input
+                            inputmode="decimal"
+                            placeholder="1"
+                            prop:value=move || new_qty.get()
+                            on:input=move |ev| new_qty.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class="field">
+                        <span class="lbl">"1 unit (weight)"</span>
                         <input
                             inputmode="decimal"
                             placeholder="200"
-                            prop:value=move || offer.get().weight
-                            on:input=move |ev| set_weight(event_target_value(&ev))
+                            prop:value=move || new_weight.get()
+                            on:input=move |ev| new_weight.set(event_target_value(&ev))
                         />
+                    </label>
+                    <label class="field">
+                        <span class="lbl">"Unit"</span>
                         <select
                             class="unit-select"
-                            prop:value=move || offer.get().weight_unit
-                            on:change=move |ev| set_weight_unit(event_target_value(&ev))
+                            prop:value=move || new_wunit.get()
+                            on:change=move |ev| new_wunit.set(event_target_value(&ev))
                         >
                             <option value="g">"g"</option>
                             <option value="kg">"kg"</option>
                             <option value="oz">"oz"</option>
                             <option value="lb">"lb"</option>
                         </select>
-                    </div>
-                </label>
+                    </label>
+                </div>
+
+                <div class="row meta-row">
+                    <label class="field date-field">
+                        <span class="lbl">"Found on"</span>
+                        <input
+                            type="date"
+                            prop:value=move || new_date.get()
+                            on:input=move |ev| new_date.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class="check">
+                        <input
+                            type="checkbox"
+                            prop:checked=move || new_promo.get()
+                            on:change=move |ev| new_promo.set(event_target_checked(&ev))
+                        />
+                        <span>"Promo"</span>
+                    </label>
+                </div>
+
+                <button class="add-btn" on:click=save_price>"Save price"</button>
             </div>
 
-            <div class="row meta-row">
-                <label class="field date-field">
-                    <span class="lbl">"Found on"</span>
-                    <input
-                        type="date"
-                        prop:value=move || offer.get().date
-                        on:input=move |ev| set_date(event_target_value(&ev))
-                    />
-                </label>
-                <label class="check">
-                    <input
-                        type="checkbox"
-                        prop:checked=move || offer.get().promo
-                        on:change=move |ev| set_promo(event_target_checked(&ev))
-                    />
-                    <span>"Promo"</span>
-                </label>
-            </div>
-
-            {move || {
-                let q = domain::quote(&offer.get());
-                let text = match (q.per_kg, q.per_unit) {
-                    (None, None) => None,
-                    (kg, unit) => {
-                        let mut parts = Vec::new();
-                        if let Some(k) = kg {
-                            parts.push(format!("{} /kg", fmt_price(k)));
-                        }
-                        if let Some(u) = unit {
-                            parts.push(format!("{} each", fmt_price(u)));
-                        }
-                        Some(parts.join("  ·  "))
-                    }
-                };
-                text.map(|text| view! { <div class="quote-hint">{text}</div> })
-            }}
+            <button class="clear-btn" on:click=delete_store>"Delete this store"</button>
         </div>
     }
 }
 
-// ---------------------------------------------------------------- app
-
-fn next_id(offers: &Vec<RwSignal<Offer>>) -> u64 {
-    offers
-        .iter()
-        .map(|s| s.get_untracked().id)
-        .max()
-        .unwrap_or(0)
-        + 1
-}
+// ---------------------------------------------------------------- products view
 
 #[component]
-fn App() -> impl IntoView {
-    let offers: RwSignal<Vec<RwSignal<Offer>>> = RwSignal::new(
-        storage::load_offers()
-            .into_iter()
-            .map(|o| RwSignal::new(o))
-            .collect(),
-    );
-    let product: RwSignal<String> = RwSignal::new(storage::load_product());
+fn ProductsView(
+    products: RwSignal<Vec<Product>>,
+    entries: RwSignal<Vec<PriceEntry>>,
+    stores: RwSignal<Vec<Store>>,
+    nav: RwSignal<Nav>,
+) -> impl IntoView {
+    let search = RwSignal::new(String::new());
 
-    // Persist on every change.
-    Effect::new(move |_| {
-        let current: Vec<Offer> = offers.get().iter().map(|s| s.get()).collect();
-        storage::save_offers(&current);
-    });
-    Effect::new(move |_| {
-        storage::save_product(&product.get());
-    });
-
-    let add_store = move |_| {
-        offers.update(|v| {
-            let id = next_id(v);
-            let mut o = Offer::new(id);
-            o.date = today_iso();
-            v.push(RwSignal::new(o));
-        });
-    };
-
-    let clear_all = move |_| {
-        offers.set(Vec::new());
-    };
-
-    let ranking = Memo::new(move |_| {
-        let items: Vec<Offer> = offers.get().iter().map(|s| s.get()).collect();
-        compute_ranking(&items)
-    });
-
-    let verdict = Memo::new(move |_| {
-        ranking
+    let filtered = Memo::new(move |_| {
+        let q = search.get().trim().to_lowercase();
+        let mut list: Vec<Product> = products
             .get()
             .into_iter()
-            .find(|r| r.per_kg.is_some())
+            .filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q))
+            .collect();
+        list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        list
     });
 
-    let max_price_kg = Memo::new(move |_| {
+    let summary_for = move |pid: u64| -> String {
+        let rows = compute_ranking(&entries.get_untracked(), &stores.get_untracked(), pid);
+        match rows.iter().find(|r| r.metric.is_some()) {
+            Some(best) => {
+                let m = best.metric.unwrap();
+                let unit = if best.kg_mode { "/kg" } else { "each" };
+                format!("from {} {} · {}", fmt_price(m), unit, best.store_name)
+            }
+            None => "no prices yet".to_string(),
+        }
+    };
+
+    view! {
+        <div class="page">
+            <header><h1>"🔍 Products"</h1></header>
+
+            <input
+                class="search-input"
+                placeholder="Search the database (fruits, vegetables, bottles…)"
+                prop:value=move || search.get()
+                on:input=move |ev| search.set(event_target_value(&ev))
+            />
+
+            <Show when=move || products.get().is_empty()>
+                <div class="hint">
+                    "Your product database is empty — record a price from a store's page first."
+                </div>
+            </Show>
+
+            <For
+                each=move || filtered.get()
+                key=|p| p.id
+                children={move |p: Product| {
+                    let pid = p.id;
+                    view! {
+                        <div class="store-row" on:click=move |_| nav.set(Nav::ProductDetail(pid))>
+                            <div class="s-info">
+                                <div class="s-name">{domain::category_emoji(&p.category)}" "{p.name.clone()}</div>
+                                <div class="s-sub">{move || summary_for(pid)}</div>
+                            </div>
+                            <div class="chev">"›"</div>
+                        </div>
+                    }
+                }}
+            />
+        </div>
+    }
+}
+
+// ---------------------------------------------------------------- product detail (comparison)
+
+#[component]
+fn ProductView(
+    product_id: u64,
+    stores: RwSignal<Vec<Store>>,
+    products: RwSignal<Vec<Product>>,
+    entries: RwSignal<Vec<PriceEntry>>,
+    nav: RwSignal<Nav>,
+) -> impl IntoView {
+    let ranking = Memo::new(move |_| compute_ranking(&entries.get(), &stores.get(), product_id));
+    let verdict = Memo::new(move |_| ranking.get().into_iter().find(|r| r.metric.is_some()));
+    let max_metric = Memo::new(move |_| {
         ranking
             .get()
             .iter()
-            .filter_map(|r| r.per_kg)
+            .filter_map(|r| r.metric)
             .fold(f64::NAN, f64::max)
     });
 
+    let product_line = Memo::new(move |_| {
+        products
+            .get()
+            .into_iter()
+            .find(|p| p.id == product_id)
+            .map(|p| format!("{} {}", domain::category_emoji(&p.category), p.name))
+            .unwrap_or_else(|| "Product".to_string())
+    });
+
+    let delete_product = move |_| {
+        products.update(|v| v.retain(|p| p.id != product_id));
+        entries.update(|v| v.retain(|e| e.product_id != product_id));
+        nav.set(Nav::Products);
+    };
+
     view! {
-        <main>
-            <header>
-                <h1>"🧺 Price Compare"</h1>
-            </header>
+        <div class="page">
+            <button class="back-btn" on:click=move |_| nav.set(Nav::Products)>"← Products"</button>
 
-            <input
-                class="product-input"
-                placeholder="What are you comparing? (e.g. Apples)"
-                prop:value=move || product.get()
-                on:input=move |ev| product.set(event_target_value(&ev))
-            />
+            <h1 class="product-title">{move || product_line.get()}</h1>
 
-            // ---- verdict
             <Show when=move || verdict.get().is_some()>
                 <div class="verdict">
                     <div class="v-label">"BEST DEAL"</div>
                     <div class="v-store">
-                        {move || verdict.get().map(|r| r.store.clone()).unwrap_or_default()}
+                        {move || verdict.get().map(|r| r.store_name.clone()).unwrap_or_default()}
                     </div>
                     <div class="v-price">
                         {move || {
-                            verdict.get()
-                                .and_then(|r| r.per_kg)
-                                .map(fmt_price)
+                            verdict.get().and_then(|r| r.metric).map(fmt_price)
                         }}
-                        <span class="v-unit">" /kg"</span>
+                        <span class="v-unit">
+                            {move || if verdict.get().map(|r| r.kg_mode).unwrap_or(false) { " /kg" } else { " each" }}
+                        </span>
                     </div>
                     {move || {
-                        verdict.get().and_then(|r| r.per_unit).map(|u| {
-                            view! { <div class="v-sub">{fmt_price(u)}" each"</div> }
-                        })
+                        let v = verdict.get();
+                        let secondary = v.as_ref().and_then(|r| if r.kg_mode { r.per_unit } else { r.per_kg });
+                        match secondary {
+                            Some(u) => {
+                                let unit = if v.map(|r| r.kg_mode).unwrap_or(false) { "each" } else { "/kg" };
+                                Some(view! { <div class="v-sub">{fmt_price(u)}" "{unit}</div> })
+                            }
+                            None => None,
+                        }
                     }}
                     {move || {
-                        let max = max_price_kg.get();
-                        let best = verdict.get().and_then(|r| r.per_kg);
+                        let best = verdict.get().and_then(|r| r.metric);
+                        let max = max_metric.get();
                         if let Some(best) = best {
                             if max.is_finite() {
                                 let save = max - best;
                                 if save > 1e-6 {
+                                    let unit = if verdict.get().map(|r| r.kg_mode).unwrap_or(false) { "/kg" } else { "each" };
                                     return Some(view! {
-                                        <div class="v-save">
-                                            {"Save "}{fmt_price(save)}{" /kg vs the priciest store"}
-                                        </div>
+                                        <div class="v-save">{"Save "}{fmt_price(save)}{" "}{unit}{" vs the priciest store"}</div>
                                     });
                                 }
                             }
@@ -433,35 +809,39 @@ fn App() -> impl IntoView {
             </Show>
 
             <Show when=move || {
-                ranking.get().iter().all(|r| r.per_kg.is_none()) && !offers.get().is_empty()
+                let rows = ranking.get();
+                !rows.is_empty() && rows.iter().all(|r| r.metric.is_none())
             }>
                 <div class="hint">
-                    "Enter a price per kg, or a price per unit plus the weight of one unit — that is what makes the comparison fair."
+                    "No comparable price yet — enter the weight of one unit (for /kg) or a plain unit price."
                 </div>
             </Show>
 
-            // ---- ranking list
+            <Show when=move || ranking.get().len() < 2>
+                <div class="hint">"Record this product in another store to compare."</div>
+            </Show>
+
             <For
                 each=move || ranking.get()
-                key=|r| r.id
-                children=move |r: RankItem| {
+                key=|r| r.entry_id
+                children={move |r: RankRow| {
                     let cls = if r.best { "rank-row best" } else { "rank-row" };
+                    let sid = r.store_id;
                     view! {
                         <div class=cls>
                             <div class="rank-info">
                                 <div class="rank-store">
                                     {move || {
-                                        let name = r.store.clone();
-                                        match r.address.clone() {
+                                        let name = r.store_name.clone();
+                                        match stores.get().iter().find(|s| s.id == sid).and_then(|s| s.address.clone()).filter(|a| !a.trim().is_empty()) {
                                             Some(addr) => {
-                                                let url =
-                                                    format!("https://maps.apple.com/?q={}", percent_encode(&addr));
+                                                let url = format!("https://maps.apple.com/?q={}", percent_encode(&addr));
                                                 view! {
                                                     <a class="maps-link" href=url target="_blank">{name}</a>
                                                 }.into_any()
                                             }
                                             None => {
-                                                view! { <span>{name}</span> }.into_any()
+                                                view! { <span on:click=move |_| nav.set(Nav::StoreDetail(sid))>{name}</span> }.into_any()
                                             }
                                         }
                                     }}
@@ -475,54 +855,73 @@ fn App() -> impl IntoView {
                             </div>
                             <div class="rank-prices">
                                 {move || {
-                                    r.per_kg.map(|k| {
-                                        view! { <div class="rank-kg">{fmt_price(k)}" /kg"</div> }
-                                    })
-                                }}
-                                {move || {
-                                    r.per_unit.map(|u| {
-                                        view! { <div class="rank-unit">{fmt_price(u)}" each"</div> }
-                                    })
+                                    // Primary metric bold, secondary small.
+                                    if r.kg_mode {
+                                        r.per_kg.map(|k| view! {
+                                            <div class="rank-kg">{fmt_price(k)}" /kg"</div>
+                                            {r.per_unit.map(|u| view! { <div class="rank-unit">{fmt_price(u)}" each"</div> })}
+                                        }.into_any())
+                                    } else {
+                                        r.per_unit.map(|u| view! {
+                                            <div class="rank-kg">{fmt_price(u)}" each"</div>
+                                            {r.per_kg.map(|k| view! { <div class="rank-unit">{fmt_price(k)}" /kg"</div> })}
+                                        }.into_any())
+                                    }
                                 }}
                                 {move || {
                                     let data = if r.best {
                                         Some(("rank-delta winner", "★ best".to_string()))
-                                    } else if r.per_kg.is_none() {
-                                        Some(("rank-delta", "add weight or /kg price".to_string()))
+                                    } else if r.metric.is_none() {
+                                        Some(("rank-delta", "add weight or price".to_string()))
                                     } else {
                                         r.delta
                                             .filter(|d| *d > 1e-6)
-                                            .map(|d| ("rank-delta", format!("+{} /kg", fmt_price(d))))
+                                            .map(|d| ("rank-delta", format!("+{} vs best", fmt_price(d))))
                                     };
-                                    data.map(|(cls, text)| {
-                                        view! { <div class=cls>{text}</div> }
-                                    })
+                                    data.map(|(cls, text)| view! { <div class=cls>{text}</div> })
                                 }}
                             </div>
                         </div>
                     }
-                }
-            />
-
-            // ---- offer input cards
-            <For
-                each=move || offers.get()
-                key=|sig| sig.get_untracked().id
-                children={move |offer: RwSignal<Offer>| {
-                    view! { <OfferCard offer offers /> }
                 }}
             />
 
-            <button class="add-btn" on:click=add_store>"+ Add a store"</button>
+            <div class="hint">"Add more prices from a store's page — the comparison updates automatically."</div>
 
-            <Show when=move || !offers.get().is_empty()>
-                <button class="clear-btn" on:click=clear_all>"Clear all"</button>
-            </Show>
+            <button class="clear-btn" on:click=delete_product>"Delete this product"</button>
+        </div>
+    }
+}
 
-            <footer>
-                <p>"Prices are temporary — date and promo flag help you remember when each price was found."</p>
-                <p>"Data stays on this device (localStorage). Nothing is sent anywhere."</p>
-            </footer>
+// ---------------------------------------------------------------- app
+
+#[component]
+fn App() -> impl IntoView {
+    let stores: RwSignal<Vec<Store>> = RwSignal::new(storage::load_stores());
+    let products: RwSignal<Vec<Product>> = RwSignal::new(storage::load_products());
+    let entries: RwSignal<Vec<PriceEntry>> = RwSignal::new(storage::load_entries());
+    let nav: RwSignal<Nav> = RwSignal::new(Nav::Stores);
+
+    // Persist on every change.
+    Effect::new(move |_| storage::save_stores(&stores.get()));
+    Effect::new(move |_| storage::save_products(&products.get()));
+    Effect::new(move |_| storage::save_entries(&entries.get()));
+
+    view! {
+        <main>
+            {move || match nav.get() {
+                Nav::Stores => view! { <StoresView stores entries nav /> }.into_any(),
+                Nav::StoreDetail(id) => {
+                    view! { <StoreView store_id=id stores products entries nav /> }.into_any()
+                }
+                Nav::Products => {
+                    view! { <ProductsView products entries stores nav /> }.into_any()
+                }
+                Nav::ProductDetail(id) => {
+                    view! { <ProductView product_id=id stores products entries nav /> }.into_any()
+                }
+            }}
+            <TabBar nav />
         </main>
     }
 }

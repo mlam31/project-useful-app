@@ -621,22 +621,30 @@
             }
         })();
 
-        // Camera barcode scan helpers (used by WASM). Uses BarcodeDetector when available.
+        // Camera barcode scan helpers (used by WASM).
+        // Prefers native BarcodeDetector; falls back to ZXing (loaded on demand) for browsers like iOS Safari.
         window.__scanStream = null;
         window.__scanTimer = null;
         window.__scanDetector = null;
+        window.__scanZxing = null;
+        window.__zxingLoadPromise = null;
+
+        window.__ensureZXing = function() {
+            if (window.ZXing) return Promise.resolve();
+            if (window.__zxingLoadPromise) return window.__zxingLoadPromise;
+            window.__zxingLoadPromise = new Promise(function(resolve, reject) {
+                var s = document.createElement('script');
+                s.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+                s.async = true;
+                s.onload = function() { window.ZXing ? resolve() : reject(new Error('ZXing library unavailable')); };
+                s.onerror = function() { reject(new Error('Could not load barcode scanner library')); };
+                document.head.appendChild(s);
+            });
+            return window.__zxingLoadPromise;
+        };
 
         window.startBarcodeScan = async function(onResult, onError) {
             try {
-                if (!('BarcodeDetector' in window)) {
-                    onError('BarcodeDetector not supported on this browser. You can enter the barcode number manually.');
-                    return false;
-                }
-                var formats = ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'];
-                try { formats = await window.BarcodeDetector.getSupportedFormats(); } catch(e) {}
-                window.__scanDetector = new window.BarcodeDetector({ formats: (formats && formats.length) ? formats : ['ean_13','ean_8','upc_a','upc_e'] });
-                var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-                window.__scanStream = stream;
                 var host = document.getElementById('scan-video-host');
                 if (!host) { onError('Scan view not ready'); window.stopBarcodeScan(); return false; }
                 host.innerHTML = '';
@@ -649,25 +657,59 @@
                 video.style.borderRadius = '12px';
                 video.style.background = '#000';
                 host.appendChild(video);
-                video.srcObject = stream;
-                try { await video.play(); } catch(e) {}
-                var detect = async function() {
-                    try {
-                        if (!window.__scanDetector || !video || video.readyState < 2) return;
-                        var barcodes = await window.__scanDetector.detect(video);
-                        if (barcodes && barcodes.length > 0) {
-                            var value = barcodes[0].rawValue || '';
-                            if (value) {
-                                window.stopBarcodeScan();
-                                onResult(value);
+
+                if ('BarcodeDetector' in window) {
+                    var formats = ['ean_13','ean_8','upc_a','upc_e','code_128','qr_code'];
+                    try { formats = await window.BarcodeDetector.getSupportedFormats(); } catch(e) {}
+                    window.__scanDetector = new window.BarcodeDetector({ formats: (formats && formats.length) ? formats : ['ean_13','ean_8','upc_a','upc_e'] });
+                    var stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+                    window.__scanStream = stream;
+                    video.srcObject = stream;
+                    try { await video.play(); } catch(e) {}
+                    var detect = async function() {
+                        try {
+                            if (!window.__scanDetector || !video || video.readyState < 2) return;
+                            var barcodes = await window.__scanDetector.detect(video);
+                            if (barcodes && barcodes.length > 0) {
+                                var value = barcodes[0].rawValue || '';
+                                if (value) {
+                                    window.stopBarcodeScan();
+                                    onResult(value);
+                                }
                             }
+                        } catch (e) { /* ignore frame errors */ }
+                    };
+                    window.__scanTimer = setInterval(detect, 400);
+                    return true;
+                }
+
+                // Fallback: ZXing (works on browsers without BarcodeDetector, e.g. iOS Safari)
+                await window.__ensureZXing();
+                var hints = new window.ZXing.Map();
+                var formats = [
+                    window.ZXing.BarcodeFormat.EAN_13,
+                    window.ZXing.BarcodeFormat.EAN_8,
+                    window.ZXing.BarcodeFormat.UPC_A,
+                    window.ZXing.BarcodeFormat.UPC_E,
+                    window.ZXing.BarcodeFormat.CODE_128,
+                    window.ZXing.BarcodeFormat.QR_CODE
+                ];
+                hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+                var reader = new window.ZXing.BrowserMultiFormatReader(hints, 400);
+                window.__scanZxing = reader;
+                await reader.decodeFromConstraints({ audio: false, video: { facingMode: { ideal: 'environment' } } }, video, function(result, err) {
+                    if (result && result.getText) {
+                        var value = result.getText();
+                        if (value) {
+                            window.stopBarcodeScan();
+                            onResult(value);
                         }
-                    } catch (e) { /* ignore frame errors */ }
-                };
-                window.__scanTimer = setInterval(detect, 400);
+                    }
+                    // ignore not-found frame errors
+                });
                 return true;
             } catch (e) {
-                onError('Camera access failed: ' + (e && e.message ? e.message : String(e)) + '. On iPhone, camera needs HTTPS (or localhost). You can enter the barcode manually.');
+                onError('Camera access failed: ' + (e && e.message ? e.message : String(e)) + '. On iPhone, camera needs HTTPS (or localhost) and camera permission. You can enter the barcode manually.');
                 window.stopBarcodeScan();
                 return false;
             }
@@ -675,6 +717,10 @@
 
         window.stopBarcodeScan = function() {
             if (window.__scanTimer) { clearInterval(window.__scanTimer); window.__scanTimer = null; }
+            if (window.__scanZxing) {
+                try { window.__scanZxing.reset(); } catch(e){}
+                window.__scanZxing = null;
+            }
             if (window.__scanStream) {
                 try { window.__scanStream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
                 window.__scanStream = null;

@@ -41,11 +41,22 @@
 
         .page { min-height: 60vh; padding-top: 8px; }
 
+        header,
+        .page-head {
+            position: sticky;
+            top: 0;
+            z-index: 15;
+            background: #000;
+            padding-top: 6px;
+            padding-bottom: 8px;
+        }
+
         header h1 {
             font-size: 22px;
             font-weight: 700;
             letter-spacing: -0.3px;
-            margin: 0 0 14px;
+            margin: 0;
+            padding-right: 84px;
         }
 
         .section {

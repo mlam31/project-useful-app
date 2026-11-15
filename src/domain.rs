@@ -129,12 +129,36 @@ fn default_qty_unit() -> String {
 /// edit them in Settings or fetch live rates.
 pub fn default_currencies() -> Vec<Currency> {
     vec![
-        Currency { code: "EUR".into(), symbol: "€".into(), rate: 1.0 },
-        Currency { code: "USD".into(), symbol: "$".into(), rate: 0.92 },
-        Currency { code: "AUD".into(), symbol: "A$".into(), rate: 0.60 },
-        Currency { code: "JPY".into(), symbol: "¥".into(), rate: 0.0059 },
-        Currency { code: "CNY".into(), symbol: "¥".into(), rate: 0.13 },
-        Currency { code: "GBP".into(), symbol: "£".into(), rate: 1.17 },
+        Currency {
+            code: "EUR".into(),
+            symbol: "€".into(),
+            rate: 1.0,
+        },
+        Currency {
+            code: "USD".into(),
+            symbol: "$".into(),
+            rate: 0.92,
+        },
+        Currency {
+            code: "AUD".into(),
+            symbol: "A$".into(),
+            rate: 0.60,
+        },
+        Currency {
+            code: "JPY".into(),
+            symbol: "¥".into(),
+            rate: 0.0059,
+        },
+        Currency {
+            code: "CNY".into(),
+            symbol: "¥".into(),
+            rate: 0.13,
+        },
+        Currency {
+            code: "GBP".into(),
+            symbol: "£".into(),
+            rate: 1.17,
+        },
     ]
 }
 
@@ -154,41 +178,146 @@ pub fn currency_symbol(code: &str) -> &'static str {
 pub fn guess_category(name: &str) -> &'static str {
     let n = name.to_lowercase();
     const FRUIT: &[&str] = &[
-        "apple", "banana", "orange", "kiwi", "grape", "pear", "mango", "berry", "strawberr",
-        "raspberry", "blueberr", "peach", "nectarine", "plum", "melon", "watermelon", "lemon",
-        "lime", "pineapple", "cherry", "fig", "apricot", "papaya", "passion", "coconut", "avocado",
+        "apple",
+        "banana",
+        "orange",
+        "kiwi",
+        "grape",
+        "pear",
+        "mango",
+        "berry",
+        "strawberr",
+        "raspberry",
+        "blueberr",
+        "peach",
+        "nectarine",
+        "plum",
+        "melon",
+        "watermelon",
+        "lemon",
+        "lime",
+        "pineapple",
+        "cherry",
+        "fig",
+        "apricot",
+        "papaya",
+        "passion",
+        "coconut",
+        "avocado",
     ];
     const VEG: &[&str] = &[
-        "cucumber", "tomato", "potato", "onion", "carrot", "lettuce", "salad", "spinach",
-        "broccoli", "cauliflower", "capsicum", "pepper", "chili", "zucchini", "courgette",
-        "eggplant", "aubergine", "mushroom", "garlic", "celery", "cabbage", "pumpkin",
-        "squash", "corn", "beet", "radish", "asparagus", "leek", "fennel", "ginger", "herb",
-        "basil", "mint", "coriander", "parsley",
+        "cucumber",
+        "tomato",
+        "potato",
+        "onion",
+        "carrot",
+        "lettuce",
+        "salad",
+        "spinach",
+        "broccoli",
+        "cauliflower",
+        "capsicum",
+        "pepper",
+        "chili",
+        "zucchini",
+        "courgette",
+        "eggplant",
+        "aubergine",
+        "mushroom",
+        "garlic",
+        "celery",
+        "cabbage",
+        "pumpkin",
+        "squash",
+        "corn",
+        "beet",
+        "radish",
+        "asparagus",
+        "leek",
+        "fennel",
+        "ginger",
+        "herb",
+        "basil",
+        "mint",
+        "coriander",
+        "parsley",
     ];
-    const FROZEN: &[&str] = &[
-        "frozen", "ice cream", "gelato", "sorbet", "freezer",
-    ];
+    const FROZEN: &[&str] = &["frozen", "ice cream", "gelato", "sorbet", "freezer"];
     const DRINK: &[&str] = &[
-        "bottle", "water", "soda", "cola", "juice", "milk", "beer", "wine", "drink", "tea",
-        "coffee", "sparkling", "yoghurt drink", "smoothie",
+        "bottle",
+        "water",
+        "soda",
+        "cola",
+        "juice",
+        "milk",
+        "beer",
+        "wine",
+        "drink",
+        "tea",
+        "coffee",
+        "sparkling",
+        "yoghurt drink",
+        "smoothie",
     ];
     const MEAT: &[&str] = &[
-        "beef", "steak", "mince", "ground beef", "pork", "bacon", "ham", "sausage",
-        "chicken", "turkey", "duck", "lamb", "veal", "meat", "salami", "prosciutto",
-        "chorizo", "ribs", "brisket", "tenderloin",
+        "beef",
+        "steak",
+        "mince",
+        "ground beef",
+        "pork",
+        "bacon",
+        "ham",
+        "sausage",
+        "chicken",
+        "turkey",
+        "duck",
+        "lamb",
+        "veal",
+        "meat",
+        "salami",
+        "prosciutto",
+        "chorizo",
+        "ribs",
+        "brisket",
+        "tenderloin",
     ];
     const PROCESSED: &[&str] = &[
-        "kimchi", "canned", "can of", "sauce", "pasta", "noodle", "rice", "cereal", "flour",
-        "chips", "snack", "biscuit", "cookie", "bread", "tuna", "sardine", "bean", "lentil",
-        "jam", "honey", "oil", "vinegar", "soup", "stock", "tofu", "tempeh", "pickle",
-        "processed", "ready meal",
+        "kimchi",
+        "canned",
+        "can of",
+        "sauce",
+        "pasta",
+        "noodle",
+        "rice",
+        "cereal",
+        "flour",
+        "chips",
+        "snack",
+        "biscuit",
+        "cookie",
+        "bread",
+        "tuna",
+        "sardine",
+        "bean",
+        "lentil",
+        "jam",
+        "honey",
+        "oil",
+        "vinegar",
+        "soup",
+        "stock",
+        "tofu",
+        "tempeh",
+        "pickle",
+        "processed",
+        "ready meal",
     ];
     if FROZEN.iter().any(|k| n.contains(k)) {
         "frozen"
-    } else if DRINK.iter().any(|k| n.contains(k)) {
-        "drink"
     } else if MEAT.iter().any(|k| n.contains(k)) {
         "meat"
+    } else if DRINK.iter().any(|k| n.contains(k)) {
+        "drink"
     } else if PROCESSED.iter().any(|k| n.contains(k)) {
         "processed"
     } else if FRUIT.iter().any(|k| n.contains(k)) {
@@ -212,7 +341,11 @@ pub const CATEGORIES: [(&str, &str, &str); 7] = [
 ];
 
 pub fn category_emoji(category: &str) -> &'static str {
-    let cat = if category == "bottle" { "drink" } else { category };
+    let cat = if category == "bottle" {
+        "drink"
+    } else {
+        category
+    };
     CATEGORIES
         .iter()
         .find(|(id, _, _)| *id == cat)
@@ -276,16 +409,29 @@ pub fn entry_quote(entry: &PriceEntry) -> Quote {
                 (Some(p), Some(m)) if m > 0.0 => Some(p / m),
                 _ => None,
             };
-            Quote { per_unit: None, per_kg, per_l: None }
+            Quote {
+                per_unit: None,
+                per_kg,
+                per_l: None,
+            }
         }
         "l" | "ml" => {
-            let vol = parse_number(&entry.quantity)
-                .map(|v| if entry.qty_unit == "ml" { v / 1000.0 } else { v });
+            let vol = parse_number(&entry.quantity).map(|v| {
+                if entry.qty_unit == "ml" {
+                    v / 1000.0
+                } else {
+                    v
+                }
+            });
             let per_l = match (price, vol) {
                 (Some(p), Some(v)) if v > 0.0 => Some(p / v),
                 _ => None,
             };
-            Quote { per_unit: None, per_kg: None, per_l }
+            Quote {
+                per_unit: None,
+                per_kg: None,
+                per_l,
+            }
         }
         // Pieces / units (default)
         _ => {
@@ -297,7 +443,11 @@ pub fn entry_quote(entry: &PriceEntry) -> Quote {
                 (Some(p), q, Some(w)) if q > 0.0 && w > 0.0 => Some(p / (q * w)),
                 _ => None,
             };
-            Quote { per_unit, per_kg, per_l: None }
+            Quote {
+                per_unit,
+                per_kg,
+                per_l: None,
+            }
         }
     }
 }
@@ -461,7 +611,10 @@ mod tests {
 
     #[test]
     fn best_metric_picks_lowest() {
-        assert_eq!(best_metric(&[Some(2.5), Some(2.99), Some(2.4)]), Best::Winner(2));
+        assert_eq!(
+            best_metric(&[Some(2.5), Some(2.99), Some(2.4)]),
+            Best::Winner(2)
+        );
     }
 
     #[test]
@@ -502,8 +655,15 @@ mod tests {
         assert_eq!(guess_category("yellow kiwi"), "fruit");
         assert_eq!(guess_category("Bottle of water"), "drink");
         assert_eq!(guess_category("Chicken breast"), "meat");
+        assert_eq!(guess_category("Beef steak"), "meat");
         assert_eq!(guess_category("Frozen peas"), "frozen");
         assert_eq!(guess_category("Kimchi jar"), "processed");
         assert_eq!(guess_category("Something weird"), "other");
+    }
+
+    #[test]
+    fn category_emoji_includes_meat() {
+        assert_eq!(category_emoji("meat"), "🥩");
+        assert_eq!(category_emoji("fruit"), "🍎");
     }
 }

@@ -25,10 +25,10 @@ fn load<T: serde::de::DeserializeOwned>(key: &str) -> Vec<T> {
 }
 
 fn save<T: serde::Serialize>(key: &str, value: &[T]) {
-    if let Some(ls) = local_storage() {
-        if let Ok(json) = serde_json::to_string(value) {
-            let _ = ls.set_item(key, &json);
-        }
+    if let Some(ls) = local_storage()
+        && let Ok(json) = serde_json::to_string(value)
+    {
+        let _ = ls.set_item(key, &json);
     }
 }
 
@@ -71,9 +71,9 @@ pub fn load_settings() -> Settings {
         .unwrap_or_default()
 }
 pub fn save_settings(settings: &Settings) {
-    if let Some(ls) = local_storage() {
-        if let Ok(json) = serde_json::to_string(settings) {
-            let _ = ls.set_item(SETTINGS_KEY, &json);
-        }
+    if let Some(ls) = local_storage()
+        && let Ok(json) = serde_json::to_string(settings)
+    {
+        let _ = ls.set_item(SETTINGS_KEY, &json);
     }
 }

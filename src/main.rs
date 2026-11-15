@@ -13,7 +13,10 @@ use web_sys::PositionOptions;
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = window, js_name = startBarcodeScan)]
-    fn js_start_barcode_scan(on_result: &js_sys::Function, on_error: &js_sys::Function) -> js_sys::Promise;
+    fn js_start_barcode_scan(
+        on_result: &js_sys::Function,
+        on_error: &js_sys::Function,
+    ) -> js_sys::Promise;
     #[wasm_bindgen(js_namespace = window, js_name = stopBarcodeScan)]
     fn js_stop_barcode_scan();
 }
@@ -141,10 +144,18 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "quantity") => "Quantity",
         ("fr", "add_product_to_store") => "Ajouter le produit au magasin",
         (_, "add_product_to_store") => "Add product to store",
-        ("fr", "scan_hint") => "Entrez un code-barres pour rechercher un produit (Open Food Facts). Vous verrez une note /100, les bons/mauvais ingrédients, et pourrez l'ajouter à un magasin.",
-        (_, "scan_hint") => "Enter a barcode number to look up a product (Open Food Facts). You’ll see a grade /100, good/bad ingredients, and can add it to a store.",
-        ("fr", "camera_hint") => "Pointez la caméra vers un code-barres. Si ça ne marche pas, saisissez le numéro.",
-        (_, "camera_hint") => "Point the camera at a barcode. If it doesn’t scan, type the number above.",
+        ("fr", "scan_hint") => {
+            "Entrez un code-barres pour rechercher un produit (Open Food Facts). Vous verrez une note /100, les bons/mauvais ingrédients, et pourrez l'ajouter à un magasin."
+        }
+        (_, "scan_hint") => {
+            "Enter a barcode number to look up a product (Open Food Facts). You’ll see a grade /100, good/bad ingredients, and can add it to a store."
+        }
+        ("fr", "camera_hint") => {
+            "Pointez la caméra vers un code-barres. Si ça ne marche pas, saisissez le numéro."
+        }
+        (_, "camera_hint") => {
+            "Point the camera at a barcode. If it doesn’t scan, type the number above."
+        }
         ("fr", "save_changes") => "Enregistrer",
         (_, "save_changes") => "Save changes",
         ("fr", "save_product_price") => "Enregistrer le produit et le prix",
@@ -163,7 +174,9 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "delete_store") => "Delete this store",
         ("fr", "price_history") => "Historique des prix",
         (_, "price_history") => "Price history",
-        ("fr", "no_stores_hint") => "Ajoutez votre premier magasin — puis enregistrez les produits que vous y achetez.",
+        ("fr", "no_stores_hint") => {
+            "Ajoutez votre premier magasin — puis enregistrez les produits que vous y achetez."
+        }
         (_, "no_stores_hint") => "Add your first store — then record the products you buy there.",
         ("fr", "no_products_yet") => "aucun produit pour l'instant",
         (_, "no_products_yet") => "no products yet",
@@ -191,12 +204,20 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "filter_products") => "Filter products",
         ("fr", "no_prices_yet") => "Aucun prix enregistré. Ajoutez-en un ci-dessus.",
         (_, "no_prices_yet") => "No prices recorded yet. Add the first one above.",
-        ("fr", "search_products") => "Rechercher des produits (fruits, légumes, boissons, surgelés, transformés…)",
-        (_, "search_products") => "Search products (fruits, vegetables, drinks, frozen, processed…)",
+        ("fr", "search_products") => {
+            "Rechercher des produits (fruits, légumes, boissons, surgelés, transformés…)"
+        }
+        (_, "search_products") => {
+            "Search products (fruits, vegetables, drinks, frozen, processed…)"
+        }
         ("fr", "all") => "Tous",
         (_, "all") => "All",
-        ("fr", "no_products_db_hint") => "Votre base de produits est vide — enregistrez d'abord un prix depuis la page d'un magasin.",
-        (_, "no_products_db_hint") => "Your product database is empty — record a price from a store's page first.",
+        ("fr", "no_products_db_hint") => {
+            "Votre base de produits est vide — enregistrez d'abord un prix depuis la page d'un magasin."
+        }
+        (_, "no_products_db_hint") => {
+            "Your product database is empty — record a price from a store's page first."
+        }
         ("fr", "no_prices_summary") => "aucun prix pour l'instant",
         (_, "no_prices_summary") => "no prices yet",
         ("fr", "good_positives") => "Points positifs",
@@ -257,10 +278,18 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "rate") => "Rate",
         ("fr", "export_import") => "Exporter / Importer les données",
         (_, "export_import") => "Export / Import data",
-        ("fr", "main_currency_hint") => "Toutes les comparaisons sont affichées dans votre devise principale. En voyage, enregistrez les prix dans n'importe quelle devise — ils sont convertis automatiquement.",
-        (_, "main_currency_hint") => "All comparisons are shown in your main currency. Record prices in any currency while travelling — they are converted automatically.",
-        ("fr", "second_currency_hint") => "Facultatif — les prix convertis sont aussi affichés dans cette devise, à côté de la principale. Utile pour garder une idée des prix de chez vous (ex. voir les EUR en faisant vos courses en AUD).",
-        (_, "second_currency_hint") => "Optional — converted prices are also shown in this currency, right next to the main one. Useful to keep a feel for prices from back home (e.g. see EUR while shopping in AUD).",
+        ("fr", "main_currency_hint") => {
+            "Toutes les comparaisons sont affichées dans votre devise principale. En voyage, enregistrez les prix dans n'importe quelle devise — ils sont convertis automatiquement."
+        }
+        (_, "main_currency_hint") => {
+            "All comparisons are shown in your main currency. Record prices in any currency while travelling — they are converted automatically."
+        }
+        ("fr", "second_currency_hint") => {
+            "Facultatif — les prix convertis sont aussi affichés dans cette devise, à côté de la principale. Utile pour garder une idée des prix de chez vous (ex. voir les EUR en faisant vos courses en AUD)."
+        }
+        (_, "second_currency_hint") => {
+            "Optional — converted prices are also shown in this currency, right next to the main one. Useful to keep a feel for prices from back home (e.g. see EUR while shopping in AUD)."
+        }
         ("fr", "rate_note_prefix") => "1 unité de devise = autant de",
         (_, "rate_note_prefix") => "1 unit of currency = this many",
         ("fr", "fetching_rates") => "Récupération des taux en direct…",
@@ -271,14 +300,22 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "fetch_failed") => "Failed — check your internet connection",
         ("fr", "enter_currency_code") => "Entrez un code devise (ex. SGD)",
         (_, "enter_currency_code") => "Enter a currency code (e.g. SGD)",
-        ("fr", "export_import_hint") => "Déplacez vos données entre appareils (iPhone ↔ Mac). L'export crée une sauvegarde à copier/enregistrer ; l'import la restaure sur cet appareil (remplace les données actuelles).",
-        (_, "export_import_hint") => "Move your data between devices (iPhone ↔ Mac). Export creates a backup you can copy/save; Import restores it on this device (replaces current data).",
+        ("fr", "export_import_hint") => {
+            "Déplacez vos données entre appareils (iPhone ↔ Mac). L'export crée une sauvegarde à copier/enregistrer ; l'import la restaure sur cet appareil (remplace les données actuelles)."
+        }
+        (_, "export_import_hint") => {
+            "Move your data between devices (iPhone ↔ Mac). Export creates a backup you can copy/save; Import restores it on this device (replaces current data)."
+        }
         ("fr", "each") => "l'unité",
         (_, "each") => "each",
         ("fr", "best_deal") => "MEILLEURE OFFRE",
         (_, "best_deal") => "BEST DEAL",
-        ("fr", "for_items_hint") => "Pour les articles vendus à la pièce : quantité = nombre d'articles et poids par article (ex. 2 pots × 500 g). Ou passez l'unité en grammes et entrez le total (ex. 1000 g).",
-        (_, "for_items_hint") => "For items sold by piece: set quantity = number of items and weight per item (e.g. 2 pots × 500g). Or switch unit to grams and enter the total (e.g. 1000g).",
+        ("fr", "for_items_hint") => {
+            "Pour les articles vendus à la pièce : quantité = nombre d'articles et poids par article (ex. 2 pots × 500 g). Ou passez l'unité en grammes et entrez le total (ex. 1000 g)."
+        }
+        (_, "for_items_hint") => {
+            "For items sold by piece: set quantity = number of items and weight per item (e.g. 2 pots × 500g). Or switch unit to grams and enter the total (e.g. 1000g)."
+        }
         ("fr", "deal_placeholder") => "ex. -50 %, 2 pour 5 €",
         (_, "deal_placeholder") => "e.g. 50% off, 2 for $5",
         ("fr", "cat_fruit") => "Fruits",
@@ -409,7 +446,11 @@ fn compute_ranking(
                 e.currency.clone()
             };
             // Treat main currency as 1:1 to avoid stale-rate issues.
-            let rate = if cur == main_code { 1.0 } else { currency_rate(currencies, &cur) };
+            let rate = if cur == main_code {
+                1.0
+            } else {
+                currency_rate(currencies, &cur)
+            };
 
             let orig_text = if cur != main_code {
                 let sym = symbol_of(currencies, &cur);
@@ -588,7 +629,9 @@ fn pin_address(
 
     let on_err = Closure::once(move |e: web_sys::PositionError| {
         let msg = match e.code() as u32 {
-            1 => "Location permission denied — allow it for this site in Safari settings. Note: Safari only provides GPS on HTTPS pages (this works once the app is deployed).",
+            1 => {
+                "Location permission denied — allow it for this site in Safari settings. Note: Safari only provides GPS on HTTPS pages (this works once the app is deployed)."
+            }
             2 => "Location unavailable right now",
             3 => "Location timed out",
             _ => "Location failed",
@@ -612,11 +655,12 @@ fn pin_address(
 
 #[component]
 fn TabBar(nav: RwSignal<Nav>, settings: RwSignal<Settings>) -> impl IntoView {
-    let stores_active = move || {
-        matches!(nav.get(), Nav::Stores | Nav::StoreDetail(_))
-    };
+    let stores_active = move || matches!(nav.get(), Nav::Stores | Nav::StoreDetail(_));
     let products_active = move || {
-        matches!(nav.get(), Nav::Products | Nav::ProductDetail(_) | Nav::Compare(_))
+        matches!(
+            nav.get(),
+            Nav::Products | Nav::ProductDetail(_) | Nav::Compare(_)
+        )
     };
     let settings_active = move || matches!(nav.get(), Nav::Settings);
 
@@ -664,7 +708,7 @@ fn StoresView(
             .into_iter()
             .filter(|st| q.is_empty() || st.name.to_lowercase().contains(&q))
             .collect();
-        list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        list.sort_by_key(|a| a.name.to_lowercase());
         list
     });
 
@@ -675,7 +719,13 @@ fn StoresView(
             return;
         }
         let id = next_id(stores.get_untracked().iter().map(|s| s.id));
-        stores.update(|v| v.push(Store { id, name, address: None }));
+        stores.update(|v| {
+            v.push(Store {
+                id,
+                name,
+                address: None,
+            })
+        });
         new_name.set(String::new());
         adding.set(false);
     };
@@ -787,7 +837,8 @@ fn StoreView(
                 (
                     e.clone(),
                     p.map(|p| p.name.clone()).unwrap_or_else(|| "?".into()),
-                    p.map(|p| p.category.clone()).unwrap_or_else(|| "other".into()),
+                    p.map(|p| p.category.clone())
+                        .unwrap_or_else(|| "other".into()),
                 )
             })
             .filter(|(_, name, _)| q.is_empty() || name.to_lowercase().contains(&q))
@@ -805,7 +856,11 @@ fn StoreView(
     let selected_entries: RwSignal<Vec<u64>> = RwSignal::new(Vec::new());
     let toggle_entry = move |eid: u64| {
         selected_entries.update(|v| {
-            if let Some(i) = v.iter().position(|&x| x == eid) { v.remove(i); } else { v.push(eid); }
+            if let Some(i) = v.iter().position(|&x| x == eid) {
+                v.remove(i);
+            } else {
+                v.push(eid);
+            }
         });
     };
     let compare_selected = move |_| {
@@ -881,7 +936,13 @@ fn StoreView(
 
     // Category suggestion while typing (until the user picks one manually).
     let guessed = Memo::new(move |_| domain::guess_category(&new_product.get()).to_string());
-    let current_cat = move || if cat_touched.get() { new_cat.get() } else { guessed.get() };
+    let current_cat = move || {
+        if cat_touched.get() {
+            new_cat.get()
+        } else {
+            guessed.get()
+        }
+    };
 
     let reset_form = move || {
         new_product.set(String::new());
@@ -916,20 +977,26 @@ fn StoreView(
             .unwrap_or_else(|| {
                 let id = next_id(products.get_untracked().iter().map(|p| p.id));
                 let category = current_cat();
-                products.update(|v| v.push(Product {
-                    id,
-                    name: name.clone(),
-                    category,
-                    barcode: None,
-                    grade: None,
-                    bad_ingredients: Vec::new(),
-                    good_ingredients: Vec::new(),
-                }));
+                products.update(|v| {
+                    v.push(Product {
+                        id,
+                        name: name.clone(),
+                        category,
+                        barcode: None,
+                        grade: None,
+                        bad_ingredients: Vec::new(),
+                        good_ingredients: Vec::new(),
+                    })
+                });
                 id
             });
 
         let qty_val = new_qty.get_untracked();
-        let qty_val = if qty_val.trim().is_empty() { "1".to_string() } else { qty_val };
+        let qty_val = if qty_val.trim().is_empty() {
+            "1".to_string()
+        } else {
+            qty_val
+        };
         let cur_val = if new_cur.get_untracked().is_empty() {
             settings.get_untracked().main_currency.clone()
         } else {
@@ -1068,7 +1135,7 @@ fn StoreView(
                             <span class="lbl">{move || tr(&settings.get().language, "category").to_string()}</span>
                             <select
                                 class="unit-select wide"
-                                prop:value=move || current_cat()
+                                prop:value=current_cat
                                 on:change=move |ev| {
                                     cat_touched.set(true);
                                     new_cat.set(event_target_value(&ev));
@@ -1490,7 +1557,7 @@ fn ProductsView(
             .filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q))
             .filter(|p| cat.is_empty() || p.category == cat)
             .collect();
-        list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        list.sort_by_key(|a| a.name.to_lowercase());
         list
     });
 
@@ -1512,9 +1579,22 @@ fn ProductsView(
         match rows.iter().find(|r| r.metric.is_some()) {
             Some(best) => {
                 let m = best.metric.unwrap();
-                let sym = symbol_of(&currencies.get_untracked(), &settings.get_untracked().main_currency);
-                let unit = metric_label(&settings.get_untracked().language, best.kg_mode, best.l_mode);
-                format!("from {}{} {} · {}", sym, fmt_price(m), unit, best.store_name)
+                let sym = symbol_of(
+                    &currencies.get_untracked(),
+                    &settings.get_untracked().main_currency,
+                );
+                let unit = metric_label(
+                    &settings.get_untracked().language,
+                    best.kg_mode,
+                    best.l_mode,
+                );
+                format!(
+                    "from {}{} {} · {}",
+                    sym,
+                    fmt_price(m),
+                    unit,
+                    best.store_name
+                )
             }
             None => tr(&settings.get_untracked().language, "no_prices_summary").to_string(),
         }
@@ -1629,11 +1709,7 @@ fn ComparisonList(
     let ids_for_verdict = ids.clone();
 
     let ranking = Memo::new(move |_| {
-        let second = settings
-            .get()
-            .second_currency
-            .clone()
-            .unwrap_or_default();
+        let second = settings.get().second_currency.clone().unwrap_or_default();
         compute_ranking(
             &entries.get(),
             &stores.get(),
@@ -1645,12 +1721,7 @@ fn ComparisonList(
         )
     });
 
-    let verdict = Memo::new(move |_| {
-        ranking
-            .get()
-            .into_iter()
-            .find(|r| r.metric.is_some())
-    });
+    let verdict = Memo::new(move |_| ranking.get().into_iter().find(|r| r.metric.is_some()));
 
     let max_metric = Memo::new(move |_| {
         ranking
@@ -1660,9 +1731,7 @@ fn ComparisonList(
             .fold(f64::NAN, f64::max)
     });
 
-    let main_sym = Memo::new(move |_| {
-        symbol_of(&currencies.get(), &settings.get().main_currency)
-    });
+    let main_sym = Memo::new(move |_| symbol_of(&currencies.get(), &settings.get().main_currency));
 
     let _ = ids_for_verdict;
 
@@ -1711,22 +1780,35 @@ fn ComparisonList(
                 {move || {
                     let best = verdict.get().and_then(|r| r.metric);
                     let max = max_metric.get();
-                    if let Some(best) = best {
-                        if max.is_finite() {
-                            let save = max - best;
-                            if save > 1e-6 {
-                                let v = verdict.get();
-                                let lang = settings.get().language;
-                                let unit = v.as_ref().map(|r| metric_label(&lang, r.kg_mode, r.l_mode)).unwrap_or_else(|| tr(&lang, "each").to_string());
-                                let msg = if lang == "fr" {
-                                    format!("Économisez {}{} {} vs le magasin le plus cher", main_sym.get(), fmt_price(save), unit)
-                                } else {
-                                    format!("Save {}{} {} vs the priciest store", main_sym.get(), fmt_price(save), unit)
-                                };
-                                return Some(view! {
-                                    <div class="v-save">{msg}</div>
-                                });
-                            }
+                    if let Some(best) = best
+                        && max.is_finite()
+                    {
+                        let save = max - best;
+                        if save > 1e-6 {
+                            let v = verdict.get();
+                            let lang = settings.get().language;
+                            let unit = v
+                                .as_ref()
+                                .map(|r| metric_label(&lang, r.kg_mode, r.l_mode))
+                                .unwrap_or_else(|| tr(&lang, "each").to_string());
+                            let msg = if lang == "fr" {
+                                format!(
+                                    "Économisez {}{} {} vs le magasin le plus cher",
+                                    main_sym.get(),
+                                    fmt_price(save),
+                                    unit
+                                )
+                            } else {
+                                format!(
+                                    "Save {}{} {} vs the priciest store",
+                                    main_sym.get(),
+                                    fmt_price(save),
+                                    unit
+                                )
+                            };
+                            return Some(view! {
+                                <div class="v-save">{msg}</div>
+                            });
                         }
                     }
                     None
@@ -1938,13 +2020,7 @@ fn CurrencyRow(
     // non-Copy currency code is stashed in a Copy RwSignal instead.
     let code_sig = RwSignal::new(code.clone());
 
-    let cur = Memo::new(move |_| {
-        currencies
-            .get()
-            .iter()
-            .find(|c| c.code == code)
-            .cloned()
-    });
+    let cur = Memo::new(move |_| currencies.get().iter().find(|c| c.code == code).cloned());
 
     // NOTE: no <Show> wrapper here — a reactive children closure would have to
     // rebuild the on:click/on:change handlers on every run, and those handlers
@@ -2014,32 +2090,62 @@ fn parse_off_quantity(q: &str) -> (String, String, String, String) {
         return ("1".into(), "pc".into(), "".into(), "g".into());
     }
     // Try "N x M unit" or "N × M unit"
-    let parts: Vec<&str> = if s.contains('x') { s.split('x').collect() } else if s.contains('×') { s.split('×').collect() } else { vec![] };
+    let parts: Vec<&str> = if s.contains('x') {
+        s.split('x').collect()
+    } else if s.contains('×') {
+        s.split('×').collect()
+    } else {
+        vec![]
+    };
     if parts.len() == 2 {
         let a = domain::parse_number(parts[0]);
         let bstr = parts[1].trim();
         if let (Some(a), Some(b)) = (a, domain::parse_number(bstr)) {
-            let unit = if bstr.contains("kg") { "kg" }
-                else if bstr.contains("ml") { "ml" }
-                else if bstr.contains("cl") { "ml" }
-                else if bstr.contains('l') { "l" }
-                else { "g" };
+            let unit = if bstr.contains("kg") {
+                "kg"
+            } else if bstr.contains("ml") || bstr.contains("cl") {
+                "ml"
+            } else if bstr.contains('l') {
+                "l"
+            } else {
+                "g"
+            };
             let bval = if bstr.contains("cl") { b * 10.0 } else { b };
             let total = a * bval;
-            return (format!("{}", total), unit.to_string(), "".into(), "g".into());
+            return (
+                format!("{}", total),
+                unit.to_string(),
+                "".into(),
+                "g".into(),
+            );
         }
     }
     if let Some(v) = domain::parse_number(&s) {
-        if s.contains("kg") { return (format!("{}", v), "kg".into(), "".into(), "g".into()); }
-        if s.contains("ml") { return (format!("{}", v), "ml".into(), "".into(), "g".into()); }
-        if s.contains("cl") { return (format!("{}", v * 10.0), "ml".into(), "".into(), "g".into()); }
-        if s.contains('l') { return (format!("{}", v), "l".into(), "".into(), "g".into()); }
-        if s.contains('g') { return (format!("{}", v), "g".into(), "".into(), "g".into()); }
+        if s.contains("kg") {
+            return (format!("{}", v), "kg".into(), "".into(), "g".into());
+        }
+        if s.contains("ml") {
+            return (format!("{}", v), "ml".into(), "".into(), "g".into());
+        }
+        if s.contains("cl") {
+            return (format!("{}", v * 10.0), "ml".into(), "".into(), "g".into());
+        }
+        if s.contains('l') {
+            return (format!("{}", v), "l".into(), "".into(), "g".into());
+        }
+        if s.contains('g') {
+            return (format!("{}", v), "g".into(), "".into(), "g".into());
+        }
     }
     ("1".into(), "pc".into(), "".into(), "g".into())
 }
 
-fn compute_grade(nutriscore: &str, nova: Option<i64>, additives_n: usize, eco: &str) -> (u8, Vec<String>, Vec<String>) {
+fn compute_grade(
+    nutriscore: &str,
+    nova: Option<i64>,
+    additives_n: usize,
+    eco: &str,
+) -> (u8, Vec<String>, Vec<String>) {
     let mut score: i32 = match nutriscore.to_lowercase().as_str() {
         "a" => 90,
         "b" => 75,
@@ -2060,10 +2166,21 @@ fn compute_grade(nutriscore: &str, nova: Option<i64>, additives_n: usize, eco: &
     }
     if let Some(n) = nova {
         match n {
-            1 => { score += 5; good.push("NOVA 1 (unprocessed)".to_string()); }
-            2 => { good.push("NOVA 2 (processed ingredients)".to_string()); }
-            3 => { score -= 5; bad.push("NOVA 3 (processed)".to_string()); }
-            4 => { score -= 12; bad.push("NOVA 4 (ultra-processed)".to_string()); }
+            1 => {
+                score += 5;
+                good.push("NOVA 1 (unprocessed)".to_string());
+            }
+            2 => {
+                good.push("NOVA 2 (processed ingredients)".to_string());
+            }
+            3 => {
+                score -= 5;
+                bad.push("NOVA 3 (processed)".to_string());
+            }
+            4 => {
+                score -= 12;
+                bad.push("NOVA 4 (ultra-processed)".to_string());
+            }
             _ => {}
         }
     }
@@ -2078,9 +2195,18 @@ fn compute_grade(nutriscore: &str, nova: Option<i64>, additives_n: usize, eco: &
         bad.push(format!("{} additives", additives_n));
     }
     match eco.to_lowercase().as_str() {
-        "a" => { score += 3; good.push("Eco-Score A".to_string()); }
-        "b" => { score += 1; good.push("Eco-Score B".to_string()); }
-        "e" => { score -= 3; bad.push("Eco-Score E".to_string()); }
+        "a" => {
+            score += 3;
+            good.push("Eco-Score A".to_string());
+        }
+        "b" => {
+            score += 1;
+            good.push("Eco-Score B".to_string());
+        }
+        "e" => {
+            score -= 3;
+            bad.push("Eco-Score E".to_string());
+        }
         _ => {}
     }
 
@@ -2114,9 +2240,9 @@ fn ScanView(
             return;
         }
         status.set("Starting camera…".to_string());
-        let barcode = barcode.clone();
-        let status = status.clone();
-        let scanning = scanning.clone();
+        let barcode = barcode;
+        let status = status;
+        let scanning = scanning;
 
         let on_res = Closure::wrap(Box::new(move |code: String| {
             barcode.set(code.clone());
@@ -2152,10 +2278,14 @@ fn ScanView(
             return;
         }
         let lang = settings.get_untracked().language;
-        status.set(if lang == "fr" { "Recherche du produit…".to_string() } else { "Looking up product…".to_string() });
+        status.set(if lang == "fr" {
+            "Recherche du produit…".to_string()
+        } else {
+            "Looking up product…".to_string()
+        });
         result.set(None);
-        let status = status.clone();
-        let result = result.clone();
+        let status = status;
+        let result = result;
         spawn_local(async move {
             let url = format!(
                 "https://world.openfoodfacts.org/api/v2/product/{}.json?fields=product_name,brands,nutriscore_grade,nova_group,additives_tags,ingredients_analysis_tags,ingredients_text,ecoscore_grade,quantity",
@@ -2175,22 +2305,60 @@ fn ScanView(
                             return;
                         }
                         let p = v.get("product").cloned().unwrap_or_default();
-                        let name = p.get("product_name").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
-                        let brand = p.get("brands").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
-                        let qty = p.get("quantity").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
-                        let nutri = p.get("nutriscore_grade").and_then(|x| x.as_str()).unwrap_or("unknown").to_string();
+                        let name = p
+                            .get("product_name")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let brand = p
+                            .get("brands")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let qty = p
+                            .get("quantity")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        let nutri = p
+                            .get("nutriscore_grade")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
                         let nova = p.get("nova_group").and_then(|x| x.as_i64());
-                        let eco = p.get("ecoscore_grade").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                        let additives_n = p.get("additives_tags").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0);
-                        let (grade, mut good, mut bad) = compute_grade(&nutri, nova, additives_n, &eco);
-                        if let Some(tags) = p.get("ingredients_analysis_tags").and_then(|x| x.as_array()) {
+                        let eco = p
+                            .get("ecoscore_grade")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let additives_n = p
+                            .get("additives_tags")
+                            .and_then(|x| x.as_array())
+                            .map(|a| a.len())
+                            .unwrap_or(0);
+                        let (grade, mut good, mut bad) =
+                            compute_grade(&nutri, nova, additives_n, &eco);
+                        if let Some(tags) = p
+                            .get("ingredients_analysis_tags")
+                            .and_then(|x| x.as_array())
+                        {
                             for t in tags.iter().filter_map(|x| x.as_str()) {
                                 if t.contains("palm-oil") {
-                                    if t.contains("palm-oil-free") { good.push("Palm oil free".to_string()); }
-                                    else if !t.contains("may-contain") { bad.push("Contains palm oil".to_string()); }
+                                    if t.contains("palm-oil-free") {
+                                        good.push("Palm oil free".to_string());
+                                    } else if !t.contains("may-contain") {
+                                        bad.push("Contains palm oil".to_string());
+                                    }
                                 }
-                                if t.contains("vegan") && !t.contains("non-vegan") { good.push("Vegan".to_string()); }
-                                if t.contains("vegetarian") && !t.contains("non-vegetarian") { good.push("Vegetarian".to_string()); }
+                                if t.contains("vegan") && !t.contains("non-vegan") {
+                                    good.push("Vegan".to_string());
+                                }
+                                if t.contains("vegetarian") && !t.contains("non-vegetarian") {
+                                    good.push("Vegetarian".to_string());
+                                }
                             }
                         }
                         if let Some(ing) = p.get("ingredients_text").and_then(|x| x.as_str()) {
@@ -2199,11 +2367,17 @@ fn ScanView(
                                 good.push(format!("Ingredients: {}", ing));
                             } else if !ing.is_empty() {
                                 let mut end = 160.min(ing.len());
-                                while end > 0 && !ing.is_char_boundary(end) { end -= 1; }
+                                while end > 0 && !ing.is_char_boundary(end) {
+                                    end -= 1;
+                                }
                                 good.push(format!("Ingredients: {}…", &ing[..end]));
                             }
                         }
-                        let display = if name.is_empty() { format!("Product {}", code) } else { name.clone() };
+                        let display = if name.is_empty() {
+                            format!("Product {}", code)
+                        } else {
+                            name.clone()
+                        };
                         result.set(Some(ScanResult {
                             barcode: code.clone(),
                             name: display,
@@ -2238,30 +2412,43 @@ fn ScanView(
                 return;
             }
             let id = next_id(stores.get_untracked().iter().map(|s| s.id));
-            stores.update(|v| v.push(Store { id, name, address: None }));
+            stores.update(|v| {
+                v.push(Store {
+                    id,
+                    name,
+                    address: None,
+                })
+            });
             id
         } else {
             match sel.parse() {
                 Ok(v) => v,
-                Err(_) => { status.set("Pick a store first (or create a new one)".to_string()); return; }
+                Err(_) => {
+                    status.set("Pick a store first (or create a new one)".to_string());
+                    return;
+                }
             }
         };
         // find or create product by barcode
-        let pid = products.get_untracked().iter()
+        let pid = products
+            .get_untracked()
+            .iter()
             .find(|p| p.barcode.as_deref() == Some(res.barcode.as_str()))
             .map(|p| p.id)
             .unwrap_or_else(|| {
                 let id = next_id(products.get_untracked().iter().map(|p| p.id));
                 let category = domain::guess_category(&res.name).to_string();
-                products.update(|v| v.push(Product {
-                    id,
-                    name: res.name.clone(),
-                    category,
-                    barcode: Some(res.barcode.clone()),
-                    grade: Some(res.grade),
-                    bad_ingredients: res.bad.clone(),
-                    good_ingredients: res.good.clone(),
-                }));
+                products.update(|v| {
+                    v.push(Product {
+                        id,
+                        name: res.name.clone(),
+                        category,
+                        barcode: Some(res.barcode.clone()),
+                        grade: Some(res.grade),
+                        bad_ingredients: res.bad.clone(),
+                        good_ingredients: res.good.clone(),
+                    })
+                });
                 id
             });
         // update grade/info on existing matched product
@@ -2271,14 +2458,20 @@ fn ScanView(
                 p.grade = Some(res.grade);
                 p.bad_ingredients = res.bad.clone();
                 p.good_ingredients = res.good.clone();
-                if p.name.trim().is_empty() { p.name = res.name.clone(); }
+                if p.name.trim().is_empty() {
+                    p.name = res.name.clone();
+                }
             }
         });
         // create a price entry in the selected store (use scanned quantity/weight when available)
         let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
         let mut entry = PriceEntry::new(eid, sid, pid);
         let price = add_price.get_untracked();
-        entry.price = if price.trim().is_empty() { "0".to_string() } else { price };
+        entry.price = if price.trim().is_empty() {
+            "0".to_string()
+        } else {
+            price
+        };
         let (pq, punit, uw, wu) = parse_off_quantity(&res.quantity);
         // If user entered a quantity, prefer it; else use parsed OFF quantity
         let user_qty = add_qty.get_untracked();
@@ -2443,7 +2636,11 @@ fn SettingsView(
             return;
         }
         if currencies.get_untracked().iter().any(|c| c.code == code) {
-            status.set(if lang == "fr" { format!("{} existe déjà", code) } else { format!("{} already exists", code) });
+            status.set(if lang == "fr" {
+                format!("{} existe déjà", code)
+            } else {
+                format!("{} already exists", code)
+            });
             return;
         }
         let symbol = if symbol.is_empty() {
@@ -2451,18 +2648,28 @@ fn SettingsView(
         } else {
             symbol
         };
-        currencies.update(|v| v.push(Currency { code: code.clone(), symbol, rate }));
+        currencies.update(|v| {
+            v.push(Currency {
+                code: code.clone(),
+                symbol,
+                rate,
+            })
+        });
         new_code.set(String::new());
         new_symbol.set(String::new());
         new_rate.set(String::new());
-        status.set(if lang == "fr" { format!("{} ajouté", code) } else { format!("{} added", code) });
+        status.set(if lang == "fr" {
+            format!("{} ajouté", code)
+        } else {
+            format!("{} added", code)
+        });
     };
 
     let fetch_live = move |_| {
         let base = main();
         status.set(tr(&settings.get_untracked().language, "fetching_rates").to_string());
-        let currencies = currencies.clone();
-        let status = status.clone();
+        let currencies = currencies;
+        let status = status;
         spawn_local(async move {
             let url = format!("https://api.frankfurter.dev/v1/latest?base={}", base);
             match gloo_net::http::Request::get(&url).send().await {
@@ -2476,11 +2683,11 @@ fn SettingsView(
                                     c.rate = 1.0;
                                     continue;
                                 }
-                                if let Some(r) = rates.get(&c.code).and_then(|x| x.as_f64()) {
-                                    if r > 0.0 {
-                                        c.rate = 1.0 / r;
-                                        n += 1;
-                                    }
+                                if let Some(r) = rates.get(&c.code).and_then(|x| x.as_f64())
+                                    && r > 0.0
+                                {
+                                    c.rate = 1.0 / r;
+                                    n += 1;
                                 }
                             }
                         });
@@ -2491,9 +2698,13 @@ fn SettingsView(
                             format!("Updated {} rates to {} base", n, base)
                         });
                     }
-                    Err(_) => status.set(tr(&settings.get_untracked().language, "could_not_parse_rates").to_string()),
+                    Err(_) => status.set(
+                        tr(&settings.get_untracked().language, "could_not_parse_rates").to_string(),
+                    ),
                 },
-                Err(_) => status.set(tr(&settings.get_untracked().language, "fetch_failed").to_string()),
+                Err(_) => {
+                    status.set(tr(&settings.get_untracked().language, "fetch_failed").to_string())
+                }
             }
         });
     };
@@ -2523,7 +2734,7 @@ fn SettingsView(
             </div>
             <select
                 class="unit-select wide main-select"
-                prop:value=move || main()
+                prop:value=main
                 on:change=move |ev| settings.update(|s| s.main_currency = event_target_value(&ev))
             >
                 {move || {

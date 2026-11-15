@@ -1,5 +1,5 @@
 use useful_app::domain::{
-    best_metric, entry_quote, latest_per_store, parse_number, weight_to_kg, Best, PriceEntry,
+    Best, PriceEntry, best_metric, entry_quote, latest_per_store, parse_number, weight_to_kg,
 };
 
 fn entry(id: u64, store: u64, price: &str, qty: &str, weight: &str, unit: &str) -> PriceEntry {
@@ -54,7 +54,10 @@ fn weight_multiplies_by_quantity_for_per_kg() {
 
 #[test]
 fn best_metric_picks_lowest() {
-    assert_eq!(best_metric(&[Some(2.5), Some(2.99), Some(2.4)]), Best::Winner(2));
+    assert_eq!(
+        best_metric(&[Some(2.5), Some(2.99), Some(2.4)]),
+        Best::Winner(2)
+    );
     assert_eq!(best_metric(&[Some(3.0), None, Some(3.0)]), Best::Tied(0));
     assert_eq!(best_metric(&[None, None]), Best::None);
 }

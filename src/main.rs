@@ -2380,6 +2380,8 @@ fn ScanView(
                 format!("Scanned: {}. Looking up…", code)
             });
             scanning.set(false);
+            scan_result_cb.set_value(None);
+            scan_error_cb.set_value(None);
             do_lookup();
         }) as Box<dyn FnMut(String)>);
         let on_err = Closure::wrap(Box::new(move |msg: String| {

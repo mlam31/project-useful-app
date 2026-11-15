@@ -285,6 +285,8 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "cat_fruit") => "Fruit",
         ("fr", "cat_vegetable") => "Légumes",
         (_, "cat_vegetable") => "Veggies",
+        ("fr", "cat_meat") => "Viande",
+        (_, "cat_meat") => "Meat",
         ("fr", "cat_drink") => "Boissons",
         (_, "cat_drink") => "Drinks",
         ("fr", "cat_frozen") => "Surgelés",
@@ -301,6 +303,7 @@ fn category_label(lang: &str, id: &str) -> &'static str {
     match id {
         "fruit" => tr(lang, "cat_fruit"),
         "vegetable" => tr(lang, "cat_vegetable"),
+        "meat" => tr(lang, "cat_meat"),
         "drink" => tr(lang, "cat_drink"),
         "frozen" => tr(lang, "cat_frozen"),
         "processed" => tr(lang, "cat_processed"),
@@ -2565,7 +2568,7 @@ fn SettingsView(
 
             <button class="add-btn" on:click=move |_| { haptic(); fetch_live(()); }>{move || tr(&settings.get().language, "fetch_live_rates").to_string()}</button>
             <Show when=move || !status.get().is_empty()>
-                <div class="hint">{move || status.get()}</div>
+                <div class="hint" style="font-size:12px; margin:4px 0 0; opacity:0.75;">{move || status.get()}</div>
             </Show>
 
             <h2 class="section">{move || tr(&settings.get().language, "add_a_currency").to_string()}</h2>

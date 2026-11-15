@@ -12,12 +12,12 @@ pub struct Store {
     pub address: Option<String>,
 }
 
-/// A product in your database (fruit, vegetable, frozen, drink, processed, other).
+/// A product in your database (fruit, vegetable, meat, frozen, drink, processed, other).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Product {
     pub id: u64,
     pub name: String,
-    /// One of: "fruit", "vegetable", "frozen", "drink", "processed", "other"
+    /// One of: "fruit", "vegetable", "meat", "frozen", "drink", "processed", "other"
     /// (legacy "bottle" is treated as "drink").
     pub category: String,
     /// Optional barcode (EAN/UPC) from scan.
@@ -172,6 +172,11 @@ pub fn guess_category(name: &str) -> &'static str {
         "bottle", "water", "soda", "cola", "juice", "milk", "beer", "wine", "drink", "tea",
         "coffee", "sparkling", "yoghurt drink", "smoothie",
     ];
+    const MEAT: &[&str] = &[
+        "beef", "steak", "mince", "ground beef", "pork", "bacon", "ham", "sausage",
+        "chicken", "turkey", "duck", "lamb", "veal", "meat", "salami", "prosciutto",
+        "chorizo", "ribs", "brisket", "tenderloin",
+    ];
     const PROCESSED: &[&str] = &[
         "kimchi", "canned", "can of", "sauce", "pasta", "noodle", "rice", "cereal", "flour",
         "chips", "snack", "biscuit", "cookie", "bread", "tuna", "sardine", "bean", "lentil",
@@ -182,6 +187,8 @@ pub fn guess_category(name: &str) -> &'static str {
         "frozen"
     } else if DRINK.iter().any(|k| n.contains(k)) {
         "drink"
+    } else if MEAT.iter().any(|k| n.contains(k)) {
+        "meat"
     } else if PROCESSED.iter().any(|k| n.contains(k)) {
         "processed"
     } else if FRUIT.iter().any(|k| n.contains(k)) {
@@ -194,9 +201,10 @@ pub fn guess_category(name: &str) -> &'static str {
 }
 
 /// Known categories: (id, emoji, display label).
-pub const CATEGORIES: [(&str, &str, &str); 6] = [
+pub const CATEGORIES: [(&str, &str, &str); 7] = [
     ("fruit", "🍎", "Fruits"),
     ("vegetable", "🥬", "Vegetables"),
+    ("meat", "🥩", "Meat"),
     ("frozen", "🧊", "Frozen"),
     ("drink", "🥤", "Drinks"),
     ("processed", "🥫", "Dry / processed"),
@@ -493,6 +501,7 @@ mod tests {
         assert_eq!(guess_category("Cucumber"), "vegetable");
         assert_eq!(guess_category("yellow kiwi"), "fruit");
         assert_eq!(guess_category("Bottle of water"), "drink");
+        assert_eq!(guess_category("Chicken breast"), "meat");
         assert_eq!(guess_category("Frozen peas"), "frozen");
         assert_eq!(guess_category("Kimchi jar"), "processed");
         assert_eq!(guess_category("Something weird"), "other");

@@ -26,8 +26,9 @@ bottom tabs (🏪 Stores / 🔍 Products / ⚙️ Settings).
   offers against per-unit ones), **currency**, date and a **promo** flag —
   prices are temporary. Deleting a store is tucked away behind the **⋯ menu**.
 - **🔍 Products tab** — searchable list of every product in your database,
-  filterable by **category chips** (All / 🍎 Fruit / 🥬 Veggies / 🧴 Drinks /
-  📦 Other), each showing its current best price. **Tick the checkboxes** to
+  filterable by **category chips** (All / 🍎 Fruit / 🥬 Veggies / 🥩 Meat /
+  🧊 Frozen / 🥤 Drinks / 🥫 Processed / 📦 Other), each showing its current best
+  price. **Tick the checkboxes** to
   select similar-but-different products (green kiwi + yellow kiwi) and tap
   **"⚖️ Compare selected"** to rank offers across all of them. Open a product
   to compare it across all stores: everything is normalized to a **price per

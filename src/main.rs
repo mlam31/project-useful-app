@@ -2235,43 +2235,7 @@ fn ScanView(
     let scan_result_cb = StoredValue::new_local(None::<Closure<dyn FnMut(String)>>);
     let scan_error_cb = StoredValue::new_local(None::<Closure<dyn FnMut(String)>>);
 
-    let start_scan = move |_| {
-        if scanning.get_untracked() {
-            return;
-        }
-        status.set("Starting camera…".to_string());
-        let barcode = barcode;
-        let status = status;
-        let scanning = scanning;
-
-        let on_res = Closure::wrap(Box::new(move |code: String| {
-            barcode.set(code.clone());
-            status.set(format!("Scanned: {}. Tap Look up.", code));
-            scanning.set(false);
-        }) as Box<dyn FnMut(String)>);
-        let on_err = Closure::wrap(Box::new(move |msg: String| {
-            status.set(msg);
-            scanning.set(false);
-        }) as Box<dyn FnMut(String)>);
-
-        let on_res_fn = on_res.as_ref().unchecked_ref::<js_sys::Function>().clone();
-        let on_err_fn = on_err.as_ref().unchecked_ref::<js_sys::Function>().clone();
-        // Show the video host first so the DOM node exists before JS looks it up.
-        scanning.set(true);
-        scan_result_cb.set_value(Some(on_res));
-        scan_error_cb.set_value(Some(on_err));
-        let _ = js_start_barcode_scan(&on_res_fn, &on_err_fn);
-    };
-
-    let stop_scan = move |_| {
-        js_stop_barcode_scan();
-        scanning.set(false);
-        status.set("Camera stopped".to_string());
-        scan_result_cb.set_value(None);
-        scan_error_cb.set_value(None);
-    };
-
-    let lookup = move |_| {
+    let do_lookup = move || {
         let code = barcode.get_untracked().trim().to_string();
         if code.is_empty() {
             status.set("Enter a barcode number".to_string());
@@ -2396,6 +2360,52 @@ fn ScanView(
                 Err(_) => status.set("Network error while fetching product".to_string()),
             }
         });
+    };
+
+    let start_scan = move |_| {
+        if scanning.get_untracked() {
+            return;
+        }
+        status.set("Starting camera…".to_string());
+        let barcode = barcode;
+        let status = status;
+        let scanning = scanning;
+
+        let on_res = Closure::wrap(Box::new(move |code: String| {
+            barcode.set(code.clone());
+            let lang = settings.get_untracked().language;
+            status.set(if lang == "fr" {
+                format!("Code scanné : {}. Recherche…", code)
+            } else {
+                format!("Scanned: {}. Looking up…", code)
+            });
+            scanning.set(false);
+            do_lookup();
+        }) as Box<dyn FnMut(String)>);
+        let on_err = Closure::wrap(Box::new(move |msg: String| {
+            status.set(msg);
+            scanning.set(false);
+        }) as Box<dyn FnMut(String)>);
+
+        let on_res_fn = on_res.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        let on_err_fn = on_err.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        // Show the video host first so the DOM node exists before JS looks it up.
+        scanning.set(true);
+        scan_result_cb.set_value(Some(on_res));
+        scan_error_cb.set_value(Some(on_err));
+        let _ = js_start_barcode_scan(&on_res_fn, &on_err_fn);
+    };
+
+    let stop_scan = move |_| {
+        js_stop_barcode_scan();
+        scanning.set(false);
+        status.set("Camera stopped".to_string());
+        scan_result_cb.set_value(None);
+        scan_error_cb.set_value(None);
+    };
+
+    let lookup = move |_| {
+        do_lookup();
     };
 
     let add_to_store = move |_| {

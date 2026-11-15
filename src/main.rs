@@ -204,12 +204,8 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "filter_products") => "Filter products",
         ("fr", "no_prices_yet") => "Aucun prix enregistré. Ajoutez-en un ci-dessus.",
         (_, "no_prices_yet") => "No prices recorded yet. Add the first one above.",
-        ("fr", "search_products") => {
-            "Rechercher des produits (fruits, légumes, boissons, surgelés, transformés…)"
-        }
-        (_, "search_products") => {
-            "Search products (fruits, vegetables, drinks, frozen, processed…)"
-        }
+        ("fr", "search_products") => "Rechercher un produit…",
+        (_, "search_products") => "Search products…",
         ("fr", "all") => "Tous",
         (_, "all") => "All",
         ("fr", "no_products_db_hint") => {
@@ -1547,6 +1543,11 @@ fn ProductsView(
     let search = RwSignal::new(String::new());
     let cat_filter = RwSignal::new(String::new());
     let selected: RwSignal<Vec<u64>> = RwSignal::new(Vec::new());
+    let adding = RwSignal::new(false);
+    let new_product_name = RwSignal::new(String::new());
+    let add_store_id: RwSignal<String> = RwSignal::new(String::new());
+    let add_price = RwSignal::new(String::new());
+    let add_status = RwSignal::new(String::new());
 
     let filtered = Memo::new(move |_| {
         let q = search.get().trim().to_lowercase();
@@ -1618,16 +1619,134 @@ fn ProductsView(
         }
     };
 
+    let add_product_to_store = move |_| {
+        haptic();
+        let name = new_product_name.get_untracked().trim().to_string();
+        let lang = settings.get_untracked().language;
+        if name.is_empty() {
+            add_status.set(if lang == "fr" {
+                "Entrez un nom de produit".to_string()
+            } else {
+                "Enter a product name".to_string()
+            });
+            return;
+        }
+        let sid: u64 = match add_store_id.get_untracked().parse() {
+            Ok(v) => v,
+            Err(_) => {
+                add_status.set(if lang == "fr" {
+                    "Choisissez un magasin".to_string()
+                } else {
+                    "Choose a store".to_string()
+                });
+                return;
+            }
+        };
+        let pid = products
+            .get_untracked()
+            .iter()
+            .find(|p| p.name.trim().eq_ignore_ascii_case(&name))
+            .map(|p| p.id)
+            .unwrap_or_else(|| {
+                let id = next_id(products.get_untracked().iter().map(|p| p.id));
+                let category = domain::guess_category(&name).to_string();
+                products.update(|v| {
+                    v.push(Product {
+                        id,
+                        name: name.clone(),
+                        category,
+                        barcode: None,
+                        grade: None,
+                        bad_ingredients: Vec::new(),
+                        good_ingredients: Vec::new(),
+                    })
+                });
+                id
+            });
+        let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
+        let mut entry = PriceEntry::new(eid, sid, pid);
+        let price = add_price.get_untracked();
+        entry.price = if price.trim().is_empty() {
+            "0".to_string()
+        } else {
+            price
+        };
+        entry.quantity = "1".to_string();
+        entry.qty_unit = "pc".to_string();
+        entry.currency = settings.get_untracked().main_currency;
+        entry.date = today_iso();
+        entries.update(|v| v.push(entry));
+        new_product_name.set(String::new());
+        add_price.set(String::new());
+        add_store_id.set(String::new());
+        adding.set(false);
+        add_status.set(String::new());
+        nav.set(Nav::StoreDetail(sid));
+    };
+
     view! {
         <div class="page">
             <header><h1>{move || tr(&settings.get().language, "products").to_string()}</h1></header>
 
-            <input
-                class="search-input"
-                placeholder=move || tr(&settings.get().language, "search_products")
-                prop:value=move || search.get()
-                on:input=move |ev| search.set(event_target_value(&ev))
-            />
+            <div class="search-wrap">
+                <input
+                    class="search-input"
+                    style="margin-bottom:0; padding-right:44px;"
+                    placeholder=move || tr(&settings.get().language, "search_products")
+                    prop:value=move || search.get()
+                    on:input=move |ev| search.set(event_target_value(&ev))
+                />
+                <button class="search-add" title="Add product" on:click=move |_| { haptic(); add_status.set(String::new()); adding.update(|v| *v = !*v); }>"+"</button>
+            </div>
+
+            <Show when=move || adding.get()>
+                <div class="card" style="margin-top:10px;">
+                    <label class="field">
+                        <span class="lbl">{move || tr(&settings.get().language, "store").to_string()}</span>
+                        <select
+                            class="unit-select wide"
+                            prop:value=move || add_store_id.get()
+                            on:change=move |ev| add_store_id.set(event_target_value(&ev))
+                        >
+                            <option value="">{move || tr(&settings.get().language, "select_store").to_string()}</option>
+                            {move || stores.get().iter().map(|s| view!{ <option value=s.id.to_string()>{s.name.clone()}</option> }).collect_view()}
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span class="lbl">{move || tr(&settings.get().language, "product_name").to_string()}</span>
+                        <input
+                            placeholder=move || tr(&settings.get().language, "product_name")
+                            prop:value=move || new_product_name.get()
+                            on:input=move |ev| new_product_name.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <label class="field">
+                        <span class="lbl">{move || tr(&settings.get().language, "price_optional").to_string()}</span>
+                        <input
+                            inputmode="decimal"
+                            placeholder="0.00"
+                            prop:value=move || add_price.get()
+                            on:input=move |ev| add_price.set(event_target_value(&ev))
+                        />
+                    </label>
+                    <Show when=move || stores.get().is_empty()>
+                        <div class="hint">{move || tr(&settings.get().language, "no_stores_hint").to_string()}</div>
+                    </Show>
+                    <Show when=move || !add_status.get().is_empty()>
+                        <div class="hint">{move || add_status.get()}</div>
+                    </Show>
+                    <div class="row" style="gap:8px; margin-top:8px;">
+                        <button class="add-btn" style="flex:1;" on:click=add_product_to_store>{move || tr(&settings.get().language, "add_product_to_store").to_string()}</button>
+                        <button class="icon-btn" title=move || tr(&settings.get().language, "cancel").to_string() on:click=move |_| {
+                            adding.set(false);
+                            add_status.set(String::new());
+                            new_product_name.set(String::new());
+                            add_price.set(String::new());
+                            add_store_id.set(String::new());
+                        }>"✕"</button>
+                    </div>
+                </div>
+            </Show>
 
             // category filter chips
             <div class="filter-row">

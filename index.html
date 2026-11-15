@@ -643,9 +643,21 @@
             return window.__zxingLoadPromise;
         };
 
+        window.__waitForScanHost = function(attempts) {
+            return new Promise(function(resolve) {
+                var tries = attempts || 20;
+                (function poll() {
+                    var host = document.getElementById('scan-video-host');
+                    if (host) return resolve(host);
+                    if (tries-- <= 0) return resolve(null);
+                    setTimeout(poll, 50);
+                })();
+            });
+        };
+
         window.startBarcodeScan = async function(onResult, onError) {
             try {
-                var host = document.getElementById('scan-video-host');
+                var host = await window.__waitForScanHost(20);
                 if (!host) { onError('Scan view not ready'); window.stopBarcodeScan(); return false; }
                 host.innerHTML = '';
                 var video = document.createElement('video');

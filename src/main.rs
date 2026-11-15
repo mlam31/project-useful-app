@@ -2122,8 +2122,6 @@ fn ScanView(
             barcode.set(code.clone());
             status.set(format!("Scanned: {}. Tap Look up.", code));
             scanning.set(false);
-            // Trigger lookup automatically by setting status; user can tap Look up. Auto-lookup:
-            // (can't easily call lookup closure here without clone complexity; keep simple)
         }) as Box<dyn FnMut(String)>);
         let on_err = Closure::wrap(Box::new(move |msg: String| {
             status.set(msg);
@@ -2132,12 +2130,11 @@ fn ScanView(
 
         let on_res_fn = on_res.as_ref().unchecked_ref::<js_sys::Function>().clone();
         let on_err_fn = on_err.as_ref().unchecked_ref::<js_sys::Function>().clone();
-        let _promise = js_start_barcode_scan(&on_res_fn, &on_err_fn);
-        // startBarcodeScan returns a Promise<bool>; we optimistically show scanning UI
-        // and let the callbacks update state (success -> scanning false, error -> scanning false).
+        // Show the video host first so the DOM node exists before JS looks it up.
         scanning.set(true);
         scan_result_cb.set_value(Some(on_res));
         scan_error_cb.set_value(Some(on_err));
+        let _ = js_start_barcode_scan(&on_res_fn, &on_err_fn);
     };
 
     let stop_scan = move |_| {
@@ -2327,8 +2324,11 @@ fn ScanView(
                         <button class="add-btn" style="flex:1; margin-top:8px; background:#3a1111; color:#fff; border:1px solid #aa5555;" on:click=move |_| { haptic(); stop_scan(()); }>{move || tr(&settings.get().language, "stop_camera").to_string()}</button>
                     </Show>
                 </div>
+                <div
+                    id="scan-video-host"
+                    style=move || if scanning.get() { "margin-top:10px;" } else { "display:none;" }
+                ></div>
                 <Show when=move || scanning.get()>
-                    <div id="scan-video-host" style="margin-top:10px;"></div>
                     <div class="hint" style="margin-top:8px;">{move || tr(&settings.get().language, "camera_hint").to_string()}</div>
                 </Show>
             </div>

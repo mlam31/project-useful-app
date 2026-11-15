@@ -697,7 +697,8 @@
 
                 // Fallback: ZXing (works on browsers without BarcodeDetector, e.g. iOS Safari)
                 await window.__ensureZXing();
-                var hints = new window.ZXing.Map();
+                var HintMap = (window.ZXing && window.ZXing.Map) ? window.ZXing.Map : Map;
+                var hints = new HintMap();
                 var formats = [
                     window.ZXing.BarcodeFormat.EAN_13,
                     window.ZXing.BarcodeFormat.EAN_8,
@@ -706,7 +707,9 @@
                     window.ZXing.BarcodeFormat.CODE_128,
                     window.ZXing.BarcodeFormat.QR_CODE
                 ];
-                hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+                if (window.ZXing.DecodeHintType && window.ZXing.DecodeHintType.POSSIBLE_FORMATS != null) {
+                    hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+                }
                 var reader = new window.ZXing.BrowserMultiFormatReader(hints, 400);
                 window.__scanZxing = reader;
                 await reader.decodeFromConstraints({ audio: false, video: { facingMode: { ideal: 'environment' } } }, video, function(result, err) {

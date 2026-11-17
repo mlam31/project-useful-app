@@ -371,6 +371,112 @@ pub fn parse_number(input: &str) -> Option<f64> {
         .filter(|v| v.is_finite() && *v > 0.0)
 }
 
+// ---------------------------------------------------------------- barcode size
+
+/// Parse an Open Food Facts "quantity" string into PriceEntry fields:
+/// `(quantity, qty_unit, unit_weight, weight_unit)`.
+///
+/// - "500 g" → ("500", "g", "", "g")
+/// - "1.5 L" → ("1.5", "l", "", "g")
+/// - "6 x 250 g" → ("6", "pc", "250", "g") — pieces × weight keeps BOTH the
+///   per-piece price and the per-kg comparison
+/// - "2 x 1.5 L" → ("3", "l", "", "g") — volumes multiply into a total
+///   (unit_weight cannot hold liters)
+/// - "6" → ("6", "pc", "", "g")
+/// - empty / unparseable → ("1", "pc", "", "g")
+pub fn parse_off_quantity(q: &str) -> (String, String, String, String) {
+    let s = q
+        .trim()
+        .to_lowercase()
+        .replace(',', ".")
+        .replace('×', "x");
+    if s.is_empty() {
+        return ("1".into(), "pc".into(), String::new(), "g".into());
+    }
+
+    /// Which unit does the fragment mention? Most specific first
+    /// ('k' in "kg" must win over 'g', "ml"/"cl" over 'l', "oz"/"lb" over 'l').
+    fn unit_of(frag: &str) -> Option<&'static str> {
+        if frag.contains("kg") {
+            Some("kg")
+        } else if frag.contains("ml") {
+            Some("ml")
+        } else if frag.contains("cl") {
+            Some("cl")
+        } else if frag.contains("fl") && frag.contains("oz") {
+            Some("fl oz")
+        } else if frag.contains("oz") {
+            Some("oz")
+        } else if frag.contains("lb") {
+            Some("lb")
+        } else if frag.contains('l') {
+            Some("l")
+        } else if frag.contains('g') {
+            Some("g")
+        } else {
+            None
+        }
+    }
+
+    /// Trim to at most 3 decimals so conversions don't print 453.5923700001.
+    fn fmt_num(v: f64) -> String {
+        format!("{}", (v * 1000.0).round() / 1000.0)
+    }
+
+    // "N x M unit" (the × sign was normalized to x above)
+    if let Some(pos) = s.find('x') {
+        let right = s[pos + 1..].trim();
+        if let (Some(a), Some(b)) = (parse_number(s[..pos].trim()), parse_number(right)) {
+            return match unit_of(right) {
+                // Weight per pack: keep pieces × weight.
+                Some("g") => (fmt_num(a), "pc".into(), fmt_num(b), "g".into()),
+                Some("kg") => (fmt_num(a), "pc".into(), fmt_num(b), "kg".into()),
+                Some("oz") => (fmt_num(a), "pc".into(), fmt_num(b), "oz".into()),
+                Some("lb") => (fmt_num(a), "pc".into(), fmt_num(b), "lb".into()),
+                // Volume: multiply into a total.
+                Some("ml") => (fmt_num(a * b), "ml".into(), String::new(), "g".into()),
+                Some("cl") => (fmt_num(a * b * 10.0), "ml".into(), String::new(), "g".into()),
+                Some("l") => (fmt_num(a * b), "l".into(), String::new(), "g".into()),
+                Some("fl oz") => (
+                    fmt_num(a * b * 29.5735296),
+                    "ml".into(),
+                    String::new(),
+                    "g".into(),
+                ),
+                // "6 x" without a unit → 6 pieces.
+                _ => (fmt_num(a), "pc".into(), String::new(), "g".into()),
+            };
+        }
+    }
+
+    // A plain amount with (or without) a unit.
+    if let Some(v) = parse_number(&s) {
+        return match unit_of(&s) {
+            Some("kg") => (fmt_num(v), "kg".into(), String::new(), "g".into()),
+            Some("g") => (fmt_num(v), "g".into(), String::new(), "g".into()),
+            Some("ml") => (fmt_num(v), "ml".into(), String::new(), "g".into()),
+            Some("cl") => (fmt_num(v * 10.0), "ml".into(), String::new(), "g".into()),
+            Some("l") => (fmt_num(v), "l".into(), String::new(), "g".into()),
+            Some("fl oz") => (fmt_num(v * 29.5735296), "ml".into(), String::new(), "g".into()),
+            Some("oz") => (
+                fmt_num(weight_to_kg(v, "oz") * 1000.0),
+                "g".into(),
+                String::new(),
+                "g".into(),
+            ),
+            Some("lb") => (
+                fmt_num(weight_to_kg(v, "lb") * 1000.0),
+                "g".into(),
+                String::new(),
+                "g".into(),
+            ),
+            _ => (fmt_num(v), "pc".into(), String::new(), "g".into()),
+        };
+    }
+
+    ("1".into(), "pc".into(), String::new(), "g".into())
+}
+
 /// Convert a weight value + unit into kilograms.
 pub fn weight_to_kg(value: f64, unit: &str) -> f64 {
     match unit {
@@ -608,6 +714,66 @@ mod tests {
         assert!((weight_to_kg(16.0, "oz") - 0.45359237).abs() < 1e-6);
         assert!((weight_to_kg(1.0, "lb") - 0.45359237).abs() < 1e-9);
     }
+
+    fn off_qty(q: &str) -> (String, String, String, String) {
+        parse_off_quantity(q)
+    }
+
+    #[test]
+    fn off_quantity_single_amounts() {
+        assert_eq!(off_qty("500 g"), ("500".into(), "g".into(), "".into(), "g".into()));
+        assert_eq!(off_qty("1.5 L"), ("1.5".into(), "l".into(), "".into(), "g".into()));
+        assert_eq!(off_qty("1kg"), ("1".into(), "kg".into(), "".into(), "g".into()));
+        assert_eq!(off_qty("750"), ("750".into(), "pc".into(), "".into(), "g".into()));
+        // French decimal comma and no space both work.
+        assert_eq!(off_qty("1,5L"), ("1.5".into(), "l".into(), "".into(), "g".into()));
+    }
+
+    #[test]
+    fn off_quantity_multipack_keeps_pieces_and_weight() {
+        // 6 cans of 250 g → 6 pieces × 250 g (per-piece AND per-kg both derivable).
+        assert_eq!(
+            off_qty("6 x 250 g"),
+            ("6".into(), "pc".into(), "250".into(), "g".into())
+        );
+        assert_eq!(
+            off_qty("2 × 1 kg"),
+            ("2".into(), "pc".into(), "1".into(), "kg".into())
+        );
+    }
+
+    #[test]
+    fn off_quantity_volumes_total() {
+        assert_eq!(
+            off_qty("12 x 330 ml"),
+            ("3960".into(), "ml".into(), "".into(), "g".into())
+        );
+        assert_eq!(
+            off_qty("2 x 1.5 l"),
+            ("3".into(), "l".into(), "".into(), "g".into())
+        );
+        // 6 x 25 cL = 1500 mL
+        assert_eq!(
+            off_qty("6 x 25 cl"),
+            ("1500".into(), "ml".into(), "".into(), "g".into())
+        );
+    }
+
+    #[test]
+    fn off_quantity_imperial_and_fallback() {
+        // fl oz is volume: 16.9 fl oz ≈ 500 mL
+        let (q, unit, _, _) = off_qty("16.9 fl oz");
+        assert_eq!(unit, "ml");
+        assert!((q.parse::<f64>().unwrap() - 499.8).abs() < 1.0);
+        // 16 oz ≈ 453.6 g
+        let (q, unit, _, _) = off_qty("16 oz");
+        assert_eq!(unit, "g");
+        assert!((q.parse::<f64>().unwrap() - 453.6).abs() < 1.0);
+        // Unknown text falls back to 1 pc.
+        assert_eq!(off_qty(""), ("1".into(), "pc".into(), "".into(), "g".into()));
+        assert_eq!(off_qty("big pack"), ("1".into(), "pc".into(), "".into(), "g".into()));
+    }
+
 
     #[test]
     fn best_metric_picks_lowest() {

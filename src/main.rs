@@ -226,20 +226,20 @@ fn tr(lang: &str, key: &str) -> &'static str {
         (_, "category") => "Category",
         ("fr", "price_for_quantity") => "Prix pour cette quantité",
         (_, "price_for_quantity") => "Price for this quantity",
-        ("fr", "quantity_how_much") => "Quantité (combien / quel volume)",
-        (_, "quantity_how_much") => "Quantity (how many / how much)",
+        ("fr", "quantity_how_much") => "Quantité",
+        (_, "quantity_how_much") => "Quantity",
         ("fr", "unit") => "Unité",
         (_, "unit") => "Unit",
-        ("fr", "items_pieces") => "articles/pièces",
-        (_, "items_pieces") => "items/pieces",
-        ("fr", "grams_total") => "grammes (total)",
-        (_, "grams_total") => "grams (total)",
-        ("fr", "kg_total") => "kg (total)",
-        (_, "kg_total") => "kg (total)",
-        ("fr", "liters_total") => "litres (total)",
-        (_, "liters_total") => "liters (total)",
-        ("fr", "ml_total") => "mL (total)",
-        (_, "ml_total") => "mL (total)",
+        ("fr", "items_pieces") => "Articles",
+        (_, "items_pieces") => "Items",
+        ("fr", "grams_total") => "g",
+        (_, "grams_total") => "g",
+        ("fr", "kg_total") => "kg",
+        (_, "kg_total") => "kg",
+        ("fr", "liters_total") => "L",
+        (_, "liters_total") => "L",
+        ("fr", "ml_total") => "mL",
+        (_, "ml_total") => "mL",
         ("fr", "weight_per_item") => "Poids par article",
         (_, "weight_per_item") => "Weight per item",
         ("fr", "weight_unit") => "Unité de poids",
@@ -307,10 +307,10 @@ fn tr(lang: &str, key: &str) -> &'static str {
         ("fr", "best_deal") => "MEILLEURE OFFRE",
         (_, "best_deal") => "BEST DEAL",
         ("fr", "for_items_hint") => {
-            "Pour les articles vendus à la pièce : quantité = nombre d'articles et poids par article (ex. 2 pots × 500 g). Ou passez l'unité en grammes et entrez le total (ex. 1000 g)."
+            "3 barquettes de mangues de 600 g → Quantité 3, poids par article 600 g."
         }
         (_, "for_items_hint") => {
-            "For items sold by piece: set quantity = number of items and weight per item (e.g. 2 pots × 500g). Or switch unit to grams and enter the total (e.g. 1000g)."
+            "3 packets of mangoes × 600 g → Quantity 3, weight per item 600 g."
         }
         ("fr", "deal_placeholder") => "ex. -50 %, 2 pour 5 €",
         (_, "deal_placeholder") => "e.g. 50% off, 2 for $5",
@@ -1195,7 +1195,7 @@ fn StoreView(
                         </label>
                     </div>
                     <Show when=move || new_qtyunit.get() == "pc">
-                        <div class="hint" style="margin-top:6px;">{move || tr(&settings.get().language, "for_items_hint").to_string()}</div>
+                        <div class="hint" style="margin-top:8px;">{move || tr(&settings.get().language, "for_items_hint").to_string()}</div>
                     </Show>
 
                     <Show when=move || new_qtyunit.get() == "pc">
@@ -2201,63 +2201,8 @@ struct ScanResult {
     bad: Vec<String>,
 }
 
-/// Parse Open Food Facts quantity string into (quantity, qty_unit, unit_weight, weight_unit)
-/// for our PriceEntry. Examples: "500 g" -> ("500","g","","g"), "1.5 L" -> ("1.5","l","","g"), "2 x 250 g" -> ("500","g","","g") approx.
-fn parse_off_quantity(q: &str) -> (String, String, String, String) {
-    let s = q.trim().to_lowercase().replace(',', ".");
-    if s.is_empty() {
-        return ("1".into(), "pc".into(), "".into(), "g".into());
-    }
-    // Try "N x M unit" or "N × M unit"
-    let parts: Vec<&str> = if s.contains('x') {
-        s.split('x').collect()
-    } else if s.contains('×') {
-        s.split('×').collect()
-    } else {
-        vec![]
-    };
-    if parts.len() == 2 {
-        let a = domain::parse_number(parts[0]);
-        let bstr = parts[1].trim();
-        if let (Some(a), Some(b)) = (a, domain::parse_number(bstr)) {
-            let unit = if bstr.contains("kg") {
-                "kg"
-            } else if bstr.contains("ml") || bstr.contains("cl") {
-                "ml"
-            } else if bstr.contains('l') {
-                "l"
-            } else {
-                "g"
-            };
-            let bval = if bstr.contains("cl") { b * 10.0 } else { b };
-            let total = a * bval;
-            return (
-                format!("{}", total),
-                unit.to_string(),
-                "".into(),
-                "g".into(),
-            );
-        }
-    }
-    if let Some(v) = domain::parse_number(&s) {
-        if s.contains("kg") {
-            return (format!("{}", v), "kg".into(), "".into(), "g".into());
-        }
-        if s.contains("ml") {
-            return (format!("{}", v), "ml".into(), "".into(), "g".into());
-        }
-        if s.contains("cl") {
-            return (format!("{}", v * 10.0), "ml".into(), "".into(), "g".into());
-        }
-        if s.contains('l') {
-            return (format!("{}", v), "l".into(), "".into(), "g".into());
-        }
-        if s.contains('g') {
-            return (format!("{}", v), "g".into(), "".into(), "g".into());
-        }
-    }
-    ("1".into(), "pc".into(), "".into(), "g".into())
-}
+/// Parse Open Food Facts quantity strings into PriceEntry fields — the
+/// implementation lives in `domain::parse_off_quantity` (unit-tested there).
 
 fn compute_grade(
     nutriscore: &str,
@@ -2338,6 +2283,7 @@ fn ScanView(
     stores: RwSignal<Vec<Store>>,
     products: RwSignal<Vec<Product>>,
     entries: RwSignal<Vec<PriceEntry>>,
+    currencies: RwSignal<Vec<Currency>>,
     nav: RwSignal<Nav>,
     settings: RwSignal<Settings>,
 ) -> impl IntoView {
@@ -2347,12 +2293,32 @@ fn ScanView(
     let selected_store: RwSignal<String> = RwSignal::new(String::new());
     let new_store_name = RwSignal::new(String::new());
     let add_price = RwSignal::new(String::new());
+    let add_cur = RwSignal::new(settings.get_untracked().main_currency.clone());
     let add_qty = RwSignal::new("1".to_string());
+    let add_qtyunit = RwSignal::new("pc".to_string());
+    let add_weight = RwSignal::new(String::new());
+    let add_wunit = RwSignal::new("g".to_string());
+    let add_date = RwSignal::new(today_iso());
+    let add_promo = RwSignal::new(false);
+    let add_deal = RwSignal::new(String::new());
     let scanning = RwSignal::new(false);
 
     // Keep scan callbacks alive while scanning.
     let scan_result_cb = StoredValue::new_local(None::<Closure<dyn FnMut(String)>>);
     let scan_error_cb = StoredValue::new_local(None::<Closure<dyn FnMut(String)>>);
+
+    // Live "price per quantity" preview computed from the form values
+    // (price ÷ quantity, plus per-kg / per-L when a size is present).
+    let preview_quote = Memo::new(move |_| {
+        let mut e = PriceEntry::new(0, 0, 0);
+        e.price = add_price.get();
+        e.quantity = add_qty.get();
+        e.qty_unit = add_qtyunit.get();
+        e.unit_weight = add_weight.get();
+        e.weight_unit = add_wunit.get();
+        domain::entry_quote(&e)
+    });
+
 
     let do_lookup = move || {
         let code = barcode.get_untracked().trim().to_string();
@@ -2465,13 +2431,20 @@ fn ScanView(
                             barcode: code.clone(),
                             name: display,
                             brand,
-                            quantity: qty,
+                            quantity: qty.clone(),
                             grade,
                             nutriscore: nutri.to_uppercase(),
                             nova: nova.map(|n| n.to_string()).unwrap_or_default(),
                             good,
                             bad,
                         }));
+                        // Prefill all size settings from the barcode's product
+                        // size (e.g. "500 g" or "6 x 250 g" → 6 pc × 250 g).
+                        let (pq, punit, uw, wu) = domain::parse_off_quantity(&qty);
+                        add_qty.set(pq);
+                        add_qtyunit.set(punit);
+                        add_weight.set(uw);
+                        add_wunit.set(wu);
                         status.set("Found. Review and add to a store.".to_string());
                     }
                     Err(_) => status.set("Could not read product data".to_string()),
@@ -2594,30 +2567,43 @@ fn ScanView(
                 }
             }
         });
-        // create a price entry in the selected store (use scanned quantity/weight when available)
+        // create a price entry in the selected store using every form setting
         let eid = next_id(entries.get_untracked().iter().map(|e| e.id));
         let mut entry = PriceEntry::new(eid, sid, pid);
-        let price = add_price.get_untracked();
-        entry.price = if price.trim().is_empty() {
+        let price = add_price.get_untracked().trim().to_string();
+        entry.price = if price.is_empty() {
             "0".to_string()
         } else {
             price
         };
-        let (pq, punit, uw, wu) = parse_off_quantity(&res.quantity);
-        // If user entered a quantity, prefer it; else use parsed OFF quantity
-        let user_qty = add_qty.get_untracked();
-        let user_qty_trim = user_qty.trim();
-        if user_qty_trim.is_empty() || user_qty_trim == "1" {
-            entry.quantity = pq;
-            entry.qty_unit = punit;
-            entry.unit_weight = uw;
-            entry.weight_unit = wu;
+        let qty = add_qty.get_untracked().trim().to_string();
+        entry.quantity = if qty.is_empty() {
+            "1".to_string()
         } else {
-            entry.quantity = user_qty;
-            entry.qty_unit = "pc".to_string();
+            qty
+        };
+        entry.qty_unit = add_qtyunit.get_untracked();
+        if entry.qty_unit == "pc" {
+            entry.unit_weight = add_weight.get_untracked();
+            entry.weight_unit = add_wunit.get_untracked();
+        } else {
+            entry.unit_weight = String::new();
+            entry.weight_unit = "g".to_string();
         }
-        entry.currency = settings.get_untracked().main_currency;
-        entry.date = today_iso();
+        let cur = add_cur.get_untracked();
+        entry.currency = if cur.is_empty() {
+            settings.get_untracked().main_currency
+        } else {
+            cur
+        };
+        entry.promo = add_promo.get_untracked();
+        entry.promo_deal = add_deal.get_untracked();
+        let date = add_date.get_untracked();
+        entry.date = if date.is_empty() {
+            today_iso()
+        } else {
+            date
+        };
         entries.update(|v| v.push(entry));
         status.set(tr(&settings.get_untracked().language, "added_to_store").to_string());
         // Navigate to store so user sees the added item
@@ -2650,7 +2636,7 @@ fn ScanView(
                 </div>
                 <div
                     id="scan-video-host"
-                    style=move || if scanning.get() { "margin-top:10px;" } else { "display:none;" }
+                    style=move || if scanning.get() { "margin-top:8px;" } else { "display:none;" }
                 ></div>
                 <Show when=move || scanning.get()>
                     <div class="hint" style="margin-top:8px;">{move || tr(&settings.get().language, "camera_hint").to_string()}</div>
@@ -2684,7 +2670,7 @@ fn ScanView(
                                 <div class=cls>{format!("{}/100", g)}</div>
                             </div>
                             <Show when=move || has_good>
-                                <div style="margin-top:10px;">
+                                <div style="margin-top:8px;">
                                     <div class="eh-title">{move || tr(&settings.get().language, "good_positives").to_string()}</div>
                                     <ul class="ing-list good">{good.iter().map(|x| view!{ <li>{x.clone()}</li> }).collect_view()}</ul>
                                 </div>
@@ -2696,7 +2682,7 @@ fn ScanView(
                                 </div>
                             </Show>
 
-                            <h2 class="section" style="margin-top:12px;">{move || tr(&settings.get().language, "add_to_store").to_string()}</h2>
+                            <h2 class="section" style="margin-top:8px;">{move || tr(&settings.get().language, "add_to_store").to_string()}</h2>
                             <label class="field">
                                 <span class="lbl">{move || tr(&settings.get().language, "store").to_string()}</span>
                                 <select class="unit-select wide" prop:value=move || selected_store.get() on:change=move |ev| selected_store.set(event_target_value(&ev))>
@@ -2713,22 +2699,128 @@ fn ScanView(
                             </Show>
                             <div class="grid2">
                                 <label class="field">
-                                    <span class="lbl">{move || tr(&settings.get().language, "price_optional").to_string()}</span>
+                                    <span class="lbl">{move || tr(&settings.get().language, "price_for_quantity").to_string()}</span>
                                     <input inputmode="decimal" placeholder="0.00" prop:value=move || add_price.get() on:input=move |ev| add_price.set(event_target_value(&ev)) />
                                 </label>
                                 <label class="field">
-                                    <span class="lbl">{move || tr(&settings.get().language, "quantity").to_string()}</span>
-                                    <input inputmode="decimal" placeholder=move || result.get().map(|r| if r.quantity.is_empty() { "1".to_string() } else { r.quantity.clone() }).unwrap_or_else(|| "1".to_string()) prop:value=move || add_qty.get() on:input=move |ev| add_qty.set(event_target_value(&ev)) />
+                                    <span class="lbl">{move || tr(&settings.get().language, "currency").to_string()}</span>
+                                    <select class="unit-select wide" prop:value=move || add_cur.get() on:change=move |ev| add_cur.set(event_target_value(&ev))>
+                                        {move || currencies.get().iter().map(|c: &Currency| {
+                                            view! { <option value=c.code.clone()>{c.symbol.clone()}" "{c.code.clone()}</option> }
+                                        }).collect_view()}
+                                    </select>
                                 </label>
                             </div>
-                            <Show when=move || result.get().map(|r| !r.quantity.is_empty()).unwrap_or(false)>
-                                <div class="hint" style="margin-top:6px;">{move || {
-                                    let lang = settings.get().language;
-                                    let q = result.get().map(|r| r.quantity).unwrap_or_default();
-                                    if lang == "fr" { format!("Taille détectée : {} (utilisée pour le prix au kg/L si quantité = 1)", q) }
-                                    else { format!("Detected product size: {} (used for per-kg/L comparison if quantity = 1)", q) }
+                            <div class="grid2">
+                                <label class="field">
+                                    <span class="lbl">{move || tr(&settings.get().language, "quantity_how_much").to_string()}</span>
+                                    <div class="stepper">
+                                        <button class="step-btn" type="button" on:click=move |_| {
+                                            let v = domain::parse_number(&add_qty.get_untracked()).unwrap_or(1.0);
+                                            let nv = if v <= 1.0 { 1.0 } else { (v - 1.0).round() };
+                                            add_qty.set(if (nv - nv.round()).abs() < 1e-9 { format!("{}", nv as i64) } else { fmt_price(nv) });
+                                        }>"−"</button>
+                                        <input
+                                            inputmode="decimal"
+                                            placeholder=move || if add_qtyunit.get() == "pc" { "1" } else { "500" }
+                                            prop:value=move || add_qty.get()
+                                            on:input=move |ev| add_qty.set(event_target_value(&ev))
+                                        />
+                                        <button class="step-btn" type="button" on:click=move |_| {
+                                            let v = domain::parse_number(&add_qty.get_untracked()).unwrap_or(0.0);
+                                            let nv = (v + 1.0).max(1.0);
+                                            add_qty.set(if (nv - nv.round()).abs() < 1e-9 { format!("{}", nv as i64) } else { fmt_price(nv) });
+                                        }>+</button>
+                                    </div>
+                                </label>
+                                <label class="field">
+                                    <span class="lbl">{move || tr(&settings.get().language, "unit").to_string()}</span>
+                                    <select
+                                        class="unit-select wide"
+                                        prop:value=move || add_qtyunit.get()
+                                        on:change=move |ev| add_qtyunit.set(event_target_value(&ev))
+                                    >
+                                        <option value="pc">{move || tr(&settings.get().language, "items_pieces").to_string()}</option>
+                                        <option value="g">{move || tr(&settings.get().language, "grams_total").to_string()}</option>
+                                        <option value="kg">{move || tr(&settings.get().language, "kg_total").to_string()}</option>
+                                        <option value="l">{move || tr(&settings.get().language, "liters_total").to_string()}</option>
+                                        <option value="ml">{move || tr(&settings.get().language, "ml_total").to_string()}</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <Show when=move || add_qtyunit.get() == "pc">
+                                <div class="grid2">
+                                    <label class="field">
+                                        <span class="lbl">{move || tr(&settings.get().language, "weight_per_item").to_string()}</span>
+                                        <input
+                                            inputmode="decimal"
+                                            placeholder="500"
+                                            prop:value=move || add_weight.get()
+                                            on:input=move |ev| add_weight.set(event_target_value(&ev))
+                                        />
+                                    </label>
+                                    <label class="field">
+                                        <span class="lbl">{move || tr(&settings.get().language, "weight_unit").to_string()}</span>
+                                        <select
+                                            class="unit-select wide"
+                                            prop:value=move || add_wunit.get()
+                                            on:change=move |ev| add_wunit.set(event_target_value(&ev))
+                                        >
+                                            <option value="g">"g"</option>
+                                            <option value="kg">"kg"</option>
+                                            <option value="oz">"oz"</option>
+                                            <option value="lb">"lb"</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </Show>
+
+                            // Live price-per-quantity preview from the values above.
+                            <Show when=move || {
+                                let q = preview_quote.get();
+                                q.per_unit.is_some() || q.per_kg.is_some() || q.per_l.is_some()
+                            }>
+                                <div class="quote-hint">{move || {
+                                    let sym = symbol_of(&currencies.get(), &add_cur.get());
+                                    let q = preview_quote.get();
+                                    let mut parts: Vec<String> = Vec::new();
+                                    if let Some(u) = q.per_unit { parts.push(format!("{}{} each", sym, fmt_price(u))); }
+                                    if let Some(k) = q.per_kg { parts.push(format!("{}{} /kg", sym, fmt_price(k))); }
+                                    if let Some(v) = q.per_l { parts.push(format!("{}{} /L", sym, fmt_price(v))); }
+                                    parts.join(" · ")
                                 }}</div>
                             </Show>
+
+                            <label class="field">
+                                <span class="lbl">{move || tr(&settings.get().language, "found_on").to_string()}</span>
+                                <input
+                                    type="date"
+                                    prop:value=move || add_date.get()
+                                    on:input=move |ev| add_date.set(event_target_value(&ev))
+                                />
+                            </label>
+                            <div class="row meta-row">
+                                <label class="check">
+                                    <input
+                                        type="checkbox"
+                                        prop:checked=move || add_promo.get()
+                                        on:change=move |ev| add_promo.set(event_target_checked(&ev))
+                                    />
+                                    <span>{move || tr(&settings.get().language, "promo_temporary").to_string()}</span>
+                                </label>
+                            </div>
+                            <Show when=move || add_promo.get()>
+                                <label class="field">
+                                    <span class="lbl">{move || tr(&settings.get().language, "deal_optional").to_string()}</span>
+                                    <input
+                                        class="store-input"
+                                        placeholder=move || tr(&settings.get().language, "deal_placeholder")
+                                        prop:value=move || add_deal.get()
+                                        on:input=move |ev| add_deal.set(event_target_value(&ev))
+                                    />
+                                </label>
+                            </Show>
+
                             <button class="add-btn" on:click=add_to_store>{move || tr(&settings.get().language, "add_product_to_store").to_string()}</button>
                         </div>
                     }
@@ -3078,7 +3170,7 @@ fn App() -> impl IntoView {
                         <CompareView ids stores products entries currencies settings nav />
                     }.into_any()
                 }
-                Nav::Scan => view! { <ScanView stores products entries nav settings /> }.into_any(),
+                Nav::Scan => view! { <ScanView stores products entries currencies nav settings /> }.into_any(),
                 Nav::Settings => view! { <SettingsView settings currencies stores products entries /> }.into_any(),
             }}
             <TabBar nav settings />

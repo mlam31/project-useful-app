@@ -511,7 +511,7 @@
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: var(--space-2);
-            margin-top: var(--space-3);
+            margin-top: var(--space-2);
         }
         select.unit-select.wide { width: 100%; text-align: left; }
 
@@ -598,7 +598,9 @@
             gap: var(--space-2);
             margin-top: var(--space-3);
         }
-        .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+        /* Uniform 8px rhythm between form rows (standalone field rows inside cards). */
+        .card > .field:not(:first-child) { margin-top: var(--space-2); }
         .lbl {
             font-size: 11px;
             font-weight: 600;
@@ -610,7 +612,7 @@
         .weight-row input { flex: 1; }
 
         .meta-row {
-            margin-top: var(--space-3);
+            margin-top: var(--space-2);
             justify-content: space-between;
         }
         .date-field { flex: 1; max-width: 180px; }
@@ -621,7 +623,6 @@
             font-size: 14px;
             font-weight: 500;
             color: var(--text-secondary);
-            padding-top: 18px;
         }
         .check input { width: 22px; height: 22px; }
 
@@ -657,7 +658,7 @@
             font-weight: 700;
             font-family: inherit;
             padding: 14px 16px;
-            margin-top: 4px;
+            margin-top: var(--space-2);
             cursor: pointer;
             letter-spacing: 0.01em;
         }
@@ -745,6 +746,11 @@
                 video.setAttribute('autoplay', '');
                 video.muted = true;
                 video.style.width = '100%';
+                // Fixed preview frame: without a set height the element starts
+                // at the 300x150 default and jumps to the stream's intrinsic
+                // size once frames arrive (looks like a zoom/grow animation).
+                video.style.height = '280px';
+                video.style.objectFit = 'cover';
                 video.style.borderRadius = '12px';
                 video.style.background = '#000';
                 host.appendChild(video);
